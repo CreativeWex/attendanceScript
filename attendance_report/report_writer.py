@@ -437,12 +437,13 @@ def _apply_conditional_formatting(
         # diff = фактическая длительность - плановая длительность
         diff_expr = f"{start_col}{work_row}-$D${arrival_row}"
 
-        # 0 < diff <= 30 минут  -> светло-зелёный
+        # 0 < diff <= 30 минут  -> светло-зелёный (игнорируем почти нулевые значения)
         overtime_light_green = FormulaRule(
             formula=[
                 f'AND({start_col}{work_row}<>"",'
                 f'{diff_expr}>0,'
-                f'{diff_expr}<=1/48)'
+                f'{diff_expr}<=1/48,'
+                f'ABS({diff_expr})>=1/1440)'
             ],
             fill=LIGHT_GREEN_FILL,
             font=BLACK_FONT,
@@ -451,7 +452,8 @@ def _apply_conditional_formatting(
         overtime_dark_green = FormulaRule(
             formula=[
                 f'AND({start_col}{work_row}<>"",'
-                f'{diff_expr}>1/48)'
+                f'{diff_expr}>1/48,'
+                f'ABS({diff_expr})>=1/1440)'
             ],
             fill=DARK_GREEN_FILL,
             font=BLACK_FONT,
@@ -461,7 +463,8 @@ def _apply_conditional_formatting(
             formula=[
                 f'AND({start_col}{work_row}<>"",'
                 f'{diff_expr}<0,'
-                f'{diff_expr}>=-1/48)'
+                f'{diff_expr}>=-1/48,'
+                f'ABS({diff_expr})>=1/1440)'
             ],
             fill=LIGHT_RED_FILL,
             font=BLACK_FONT,
@@ -470,7 +473,8 @@ def _apply_conditional_formatting(
         overtime_dark_red = FormulaRule(
             formula=[
                 f'AND({start_col}{work_row}<>"",'
-                f'{diff_expr}<-1/48)'
+                f'{diff_expr}<-1/48,'
+                f'ABS({diff_expr})>=1/1440)'
             ],
             fill=DARK_RED_FILL,
             font=BLACK_FONT,
@@ -493,7 +497,8 @@ def _apply_conditional_formatting(
             formula=[
                 f'AND({start_col}{work_minus_absence_row}<>"",'
                 f'{diff_factual_expr}>0,'
-                f'{diff_factual_expr}<=1/48)'
+                f'{diff_factual_expr}<=1/48,'
+                f'ABS({diff_factual_expr})>=1/1440)'
             ],
             fill=LIGHT_GREEN_FILL,
             font=BLACK_FONT,
@@ -501,7 +506,8 @@ def _apply_conditional_formatting(
         overtime_factual_dark_green = FormulaRule(
             formula=[
                 f'AND({start_col}{work_minus_absence_row}<>"",'
-                f'{diff_factual_expr}>1/48)'
+                f'{diff_factual_expr}>1/48,'
+                f'ABS({diff_factual_expr})>=1/1440)'
             ],
             fill=DARK_GREEN_FILL,
             font=BLACK_FONT,
@@ -510,7 +516,8 @@ def _apply_conditional_formatting(
             formula=[
                 f'AND({start_col}{work_minus_absence_row}<>"",'
                 f'{diff_factual_expr}<0,'
-                f'{diff_factual_expr}>=-1/48)'
+                f'{diff_factual_expr}>=-1/48,'
+                f'ABS({diff_factual_expr})>=1/1440)'
             ],
             fill=LIGHT_RED_FILL,
             font=BLACK_FONT,
@@ -518,7 +525,8 @@ def _apply_conditional_formatting(
         overtime_factual_dark_red = FormulaRule(
             formula=[
                 f'AND({start_col}{work_minus_absence_row}<>"",'
-                f'{diff_factual_expr}<-1/48)'
+                f'{diff_factual_expr}<-1/48,'
+                f'ABS({diff_factual_expr})>=1/1440)'
             ],
             fill=DARK_RED_FILL,
             font=BLACK_FONT,
