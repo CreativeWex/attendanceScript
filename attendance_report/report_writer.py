@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List
 
 from openpyxl import Workbook
+from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
@@ -12,6 +13,9 @@ from openpyxl.worksheet.worksheet import Worksheet
 from .models import DayBounds, EmployeeCalendar
 
 HEADER_FILL = PatternFill(fill_type="solid", start_color="D9E1F2", end_color="D9E1F2")
+RED_FILL = PatternFill(fill_type="solid", start_color="FF0000", end_color="FF0000")
+GREEN_FILL = PatternFill(fill_type="solid", start_color="00FF00", end_color="00FF00")
+BLACK_FONT = Font(color="000000")
 THIN_BORDER = Border(
     left=Side(style="thin"),
     right=Side(style="thin"),
@@ -226,3 +230,38 @@ def _apply_layout(sheet: Worksheet, all_dates: List[date]) -> None:
             cell.border = THIN_BORDER
             if row_index > 1 and column_index >= 4:
                 cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    _apply_conditional_formatting(sheet, all_dates, last_row)
+
+
+def _apply_conditional_formatting(
+    sheet: Worksheet, all_dates: List[date], last_row: int
+) -> None:
+    """Apply conditional formatting: red for negative deviation, green for work > 09:00."""
+    if not all_dates:
+        return
+    first_data_column = 6
+    start_col = get_column_letter(first_data_column)
+    end_col = get_column_letter(first_data_column + len(all_dates) - 1)
+    num_employees = (last_row - 1) // 5
+
+    for employee_index in range(num_employees):
+        arrival_row = 2 + employee_index * 5
+        work_row = arrival_row + 2
+        delta_row = arrival_row + 3
+
+        delta_range = f"{start_col}{delta_row}:{end_col}{delta_row}"
+        delta_rule = FormulaRule(
+            formula=[f'LEFT({start_col}{delta_row},1)="-"'],
+            fill=RED_FILL,
+            font=BLACK_FONT,
+        )
+        sheet.conditional_formatting.add(delta_range, delta_rule)
+
+        work_range = f"{start_col}{work_row}:{end_col}{work_row}"
+        work_rule = FormulaRule(
+            formula=[f"{start_col}{work_row}>9/24"],
+            fill=GREEN_FILL,
+            font=BLACK_FONT,
+        )
+        sheet.conditional_formatting.add(work_range, work_rule)
