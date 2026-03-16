@@ -168,9 +168,12 @@ def _write_body(
                 f'{end_column_letter}{arrival_row}),"-ч:мм")),"")'
             )
             avg_overtime_formula = (
-                f'=IFERROR('
-                f'AVERAGE({start_column_letter}{overtime_row}:{end_column_letter}{overtime_row}),'
-                f'"")'
+                f'=IFERROR(IF(AVERAGE({start_column_letter}{work_row}:{end_column_letter}{work_row})'
+                f'>=$D$2,'
+                f'TEXT(AVERAGE({start_column_letter}{work_row}:{end_column_letter}{work_row})'
+                f'-$D$2,"ч:мм"),'
+                f'TEXT($D$2-AVERAGE({start_column_letter}{work_row}:'
+                f'{end_column_letter}{work_row}),"-ч:мм")),"")'
             )
 
             avg_arrival_cell = sheet.cell(
