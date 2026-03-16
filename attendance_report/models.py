@@ -3,15 +3,22 @@
 
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
-from typing import Dict
+from typing import Dict, Optional
 
 
 @dataclass(frozen=True)
 class EventRecord:
-    """Represents one raw attendance event for a specific employee."""
+    """Represents one raw attendance event for a specific employee.
+
+    `is_entry` describes direction when available:
+    - True  -> employee entered (Вход)
+    - False -> employee exited (Выход)
+    - None  -> direction unknown (legacy formats, no EntryExit column)
+    """
 
     employee_name: str
     occurred_at: datetime
+    is_entry: Optional[bool] = None
 
 
 @dataclass(frozen=True)

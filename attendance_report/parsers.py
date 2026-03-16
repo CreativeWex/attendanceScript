@@ -116,11 +116,29 @@ def parse_second_type_events(file_path: Path) -> List[EventRecord]:
         if not fio:
             continue
 
+        # Optional direction column (EntryExit with values "Вход"/"Выход")
+        is_entry: Optional[bool] = None
+        entry_exit_index = indexes.get("entry_exit")
+        if entry_exit_index is not None:
+            raw_direction = row[entry_exit_index]
+            if isinstance(raw_direction, str):
+                direction_clean = raw_direction.strip().lower()
+                if direction_clean == "вход":
+                    is_entry = True
+                elif direction_clean == "выход":
+                    is_entry = False
+
         for time_index in indexes["time_columns"]:
             timestamp = _parse_timestamp(row[time_index])
             if timestamp is None:
                 continue
-            records.append(EventRecord(employee_name=fio, occurred_at=timestamp))
+            records.append(
+                EventRecord(
+                    employee_name=fio,
+                    occurred_at=timestamp,
+                    is_entry=is_entry,
+                )
+            )
 
     if not records:
         raise UnsupportedWorkbookFormatError(
@@ -156,7 +174,9 @@ def _parse_first_type_with_xlrd(file_path: Path, employee_name: str) -> List[Eve
                 records.append(
                     EventRecord(
                         employee_name=employee_name,
-                        occurred_at=datetime.combine(current_date, parsed_datetime.time()),
+                        occurred_at=datetime.combine(
+                            current_date, parsed_datetime.time()
+                        ),
                     )
                 )
             continue
@@ -221,6 +241,7 @@ def _detect_second_type_indexes(header_row: Sequence[object]) -> Dict[str, objec
         "last_name": None,
         "first_name": None,
         "middle_name": None,
+        "entry_exit": None,
         "time_columns": [],
     }
 
@@ -260,6 +281,10 @@ def _detect_second_type_indexes(header_row: Sequence[object]) -> Dict[str, objec
 
         if is_kb_time or is_event_time:
             index_map["time_columns"].append(idx)
+
+        # Entry/Exit direction (e.g. "EntryExit", "Entry Exit")
+        if index_map["entry_exit"] is None and ("entryexit" in normalized):
+            index_map["entry_exit"] = idx
 
     index_map["time_columns"] = sorted(set(index_map["time_columns"]))
     return index_map
