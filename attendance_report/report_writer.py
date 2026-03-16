@@ -13,8 +13,10 @@ from openpyxl.worksheet.worksheet import Worksheet
 from .models import DayBounds, EmployeeCalendar
 
 HEADER_FILL = PatternFill(fill_type="solid", start_color="D9E1F2", end_color="D9E1F2")
-RED_FILL = PatternFill(fill_type="solid", start_color="FF0000", end_color="FF0000")
-GREEN_FILL = PatternFill(fill_type="solid", start_color="00FF00", end_color="00FF00")
+LIGHT_RED_FILL = PatternFill(fill_type="solid", start_color="FFC7CE", end_color="FFC7CE")
+DARK_RED_FILL = PatternFill(fill_type="solid", start_color="9C0006", end_color="9C0006")
+LIGHT_GREEN_FILL = PatternFill(fill_type="solid", start_color="C6EFCE", end_color="C6EFCE")
+DARK_GREEN_FILL = PatternFill(fill_type="solid", start_color="006100", end_color="006100")
 BLACK_FONT = Font(color="000000")
 THIN_BORDER = Border(
     left=Side(style="thin"),
@@ -237,7 +239,7 @@ def _apply_layout(sheet: Worksheet, all_dates: List[date]) -> None:
 def _apply_conditional_formatting(
     sheet: Worksheet, all_dates: List[date], last_row: int
 ) -> None:
-    """Apply conditional formatting: red for negative deviation, green for work > 09:00."""
+    """Apply conditional formatting for delta and overtime rows only."""
     if not all_dates:
         return
     first_data_column = 6
@@ -247,21 +249,79 @@ def _apply_conditional_formatting(
 
     for employee_index in range(num_employees):
         arrival_row = 2 + employee_index * 5
-        work_row = arrival_row + 2
         delta_row = arrival_row + 3
+        overtime_row = arrival_row + 4
 
+        # Отклонение по времени прихода
         delta_range = f"{start_col}{delta_row}:{end_col}{delta_row}"
-        delta_rule = FormulaRule(
-            formula=[f'AND({start_col}{delta_row}<>"",LEFT({start_col}{delta_row},1)="-")'],
-            fill=RED_FILL,
+        # diff = фактическое время прихода - плановое время
+        # зелёный: diff < -15 минут
+        delta_green_rule = FormulaRule(
+            formula=[
+                f'AND({start_col}{arrival_row}<>"",'
+                f'{start_col}{arrival_row}-$B${arrival_row}<-1/96)'
+            ],
+            fill=LIGHT_GREEN_FILL,
             font=BLACK_FONT,
         )
-        sheet.conditional_formatting.add(delta_range, delta_rule)
+        # красный: diff > 15 минут
+        delta_red_rule = FormulaRule(
+            formula=[
+                f'AND({start_col}{arrival_row}<>"",'
+                f'{start_col}{arrival_row}-$B${arrival_row}>1/96)'
+            ],
+            fill=LIGHT_RED_FILL,
+            font=BLACK_FONT,
+        )
+        sheet.conditional_formatting.add(delta_range, delta_green_rule)
+        sheet.conditional_formatting.add(delta_range, delta_red_rule)
 
-        work_range = f"{start_col}{work_row}:{end_col}{work_row}"
-        work_rule = FormulaRule(
-            formula=[f'AND({start_col}{work_row}<>"",{start_col}{work_row}>9/24)'],
-            fill=GREEN_FILL,
+        # Переработка
+        work_row = arrival_row + 2
+        overtime_range = f"{start_col}{overtime_row}:{end_col}{overtime_row}"
+        # diff = фактическая длительность - плановая длительность
+        diff_expr = f"{start_col}{work_row}-$D${arrival_row}"
+
+        # 0 < diff <= 30 минут  -> светло-зелёный
+        overtime_light_green = FormulaRule(
+            formula=[
+                f'AND({start_col}{work_row}<>"",'
+                f'{diff_expr}>0,'
+                f'{diff_expr}<=1/48)'
+            ],
+            fill=LIGHT_GREEN_FILL,
             font=BLACK_FONT,
         )
-        sheet.conditional_formatting.add(work_range, work_rule)
+        # diff > 30 минут -> тёмно-зелёный
+        overtime_dark_green = FormulaRule(
+            formula=[
+                f'AND({start_col}{work_row}<>"",'
+                f'{diff_expr}>1/48)'
+            ],
+            fill=DARK_GREEN_FILL,
+            font=BLACK_FONT,
+        )
+        # -30 минут <= diff < 0 -> светло-красный
+        overtime_light_red = FormulaRule(
+            formula=[
+                f'AND({start_col}{work_row}<>"",'
+                f'{diff_expr}<0,'
+                f'{diff_expr}>=-1/48)'
+            ],
+            fill=LIGHT_RED_FILL,
+            font=BLACK_FONT,
+        )
+        # diff < -30 минут -> тёмно-красный
+        overtime_dark_red = FormulaRule(
+            formula=[
+                f'AND({start_col}{work_row}<>"",'
+                f'{diff_expr}<-1/48)'
+            ],
+            fill=DARK_RED_FILL,
+            font=BLACK_FONT,
+        )
+
+        sheet.conditional_formatting.add(overtime_range, overtime_light_green)
+        sheet.conditional_formatting.add(overtime_range, overtime_dark_green)
+        sheet.conditional_formatting.add(overtime_range, overtime_light_red)
+        sheet.conditional_formatting.add(overtime_range, overtime_dark_red)
