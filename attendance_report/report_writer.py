@@ -252,7 +252,7 @@ def _apply_conditional_formatting(
 
         delta_range = f"{start_col}{delta_row}:{end_col}{delta_row}"
         delta_rule = FormulaRule(
-            formula=[f'LEFT({start_col}{delta_row},1)="-"'],
+            formula=[f'AND({start_col}{delta_row}<>"",LEFT({start_col}{delta_row},1)="-")'],
             fill=RED_FILL,
             font=BLACK_FONT,
         )
@@ -260,7 +260,7 @@ def _apply_conditional_formatting(
 
         work_range = f"{start_col}{work_row}:{end_col}{work_row}"
         work_rule = FormulaRule(
-            formula=[f"{start_col}{work_row}>9/24"],
+            formula=[f'AND({start_col}{work_row}<>"",{start_col}{work_row}>9/24)'],
             fill=GREEN_FILL,
             font=BLACK_FONT,
         )
