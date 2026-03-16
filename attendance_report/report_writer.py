@@ -104,11 +104,13 @@ def _write_body(
         sheet.cell(row=arrival_row, column=2, value=default_official_time)
         sheet.cell(row=arrival_row, column=2).number_format = "hh:mm"
 
-        sheet.cell(row=arrival_row, column=3, value=default_leave_time)
-        sheet.cell(row=arrival_row, column=3).number_format = "hh:mm"
-
         sheet.cell(row=arrival_row, column=4, value=time(9, 0))
         sheet.cell(row=arrival_row, column=4).number_format = "hh:mm"
+
+        # Конец рабочего дня = начало рабочего дня + продолжительность работы
+        end_of_day_formula = f"=B{arrival_row}+D{arrival_row}"
+        sheet.cell(row=arrival_row, column=3, value=end_of_day_formula)
+        sheet.cell(row=arrival_row, column=3).number_format = "hh:mm"
 
         sheet.cell(row=arrival_row, column=5, value="Время прихода")
         sheet.cell(row=leave_row, column=5, value="Время ухода")
