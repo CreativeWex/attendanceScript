@@ -102,11 +102,11 @@ def _write_body(
         sheet.cell(row=arrival_row, column=2, value=default_official_time)
         sheet.cell(row=arrival_row, column=2).number_format = "hh:mm"
 
-        sheet.cell(row=2, column=3, value=default_leave_time)  # 18:00 в B
-        sheet.cell(row=2, column=3).number_format = "hh:mm"
+        sheet.cell(row=arrival_row, column=3, value=default_leave_time)
+        sheet.cell(row=arrival_row, column=3).number_format = "hh:mm"
 
-        sheet.cell(row=2, column=4, value=time(9, 0))
-        sheet.cell(row=2, column=4).number_format = "hh:mm"
+        sheet.cell(row=arrival_row, column=4, value=time(9, 0))
+        sheet.cell(row=arrival_row, column=4).number_format = "hh:mm"
 
         sheet.cell(row=arrival_row, column=5, value="Время прихода")
         sheet.cell(row=leave_row, column=5, value="Время ухода")
@@ -138,9 +138,9 @@ def _write_body(
             )
             overtime_formula = (
                 f'=IF({column_letter}{work_row}="","",'
-                f'IF({column_letter}{work_row}>=$D$2,'
-                f'TEXT({column_letter}{work_row}-$D$2,"ч:мм"),'
-                f'TEXT($D$2-{column_letter}{work_row},"-ч:мм")))'
+                f'IF({column_letter}{work_row}>=$D${arrival_row},'
+                f'TEXT({column_letter}{work_row}-$D${arrival_row},"ч:мм"),'
+                f'TEXT($D${arrival_row}-{column_letter}{work_row},"-ч:мм")))'
             )
 
 
@@ -173,10 +173,10 @@ def _write_body(
             )
             avg_overtime_formula = (
                 f'=IFERROR(IF(AVERAGE({start_column_letter}{work_row}:{end_column_letter}{work_row})'
-                f'>=$D$2,'
+                f'>=$D${arrival_row},'
                 f'TEXT(AVERAGE({start_column_letter}{work_row}:{end_column_letter}{work_row})'
-                f'-$D$2,"ч:мм"),'
-                f'TEXT($D$2-AVERAGE({start_column_letter}{work_row}:'
+                f'-$D${arrival_row},"ч:мм"),'
+                f'TEXT($D${arrival_row}-AVERAGE({start_column_letter}{work_row}:'
                 f'{end_column_letter}{work_row}),"-ч:мм")),"")'
             )
 
