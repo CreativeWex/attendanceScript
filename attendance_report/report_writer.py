@@ -1,0 +1,225 @@
+"""Excel report generation using formulas for all derived values."""
+
+from datetime import date, time
+from pathlib import Path
+from typing import Dict, Iterable, List
+
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.worksheet import Worksheet
+
+from .models import DayBounds, EmployeeCalendar
+
+HEADER_FILL = PatternFill(fill_type="solid", start_color="D9E1F2", end_color="D9E1F2")
+THIN_BORDER = Border(
+    left=Side(style="thin"),
+    right=Side(style="thin"),
+    top=Side(style="thin"),
+    bottom=Side(style="thin"),
+)
+
+
+def write_report(
+    output_path: Path,
+    calendar: EmployeeCalendar,
+    default_official_time: time = time(9, 0),
+) -> None:
+    default_leave_time: time = time(18, 0)
+
+    """Create report workbook from aggregated employee daily attendance bounds."""
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Отчет"
+
+    all_dates = _collect_sorted_dates(calendar)
+    _write_header(sheet, all_dates)
+    _write_body(sheet, calendar, all_dates, default_official_time, default_leave_time)
+    _apply_layout(sheet, all_dates)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    workbook.save(output_path)
+
+
+def _collect_sorted_dates(calendar: EmployeeCalendar) -> List[date]:
+    """Collect and sort all dates present in the calendar."""
+    day_set = set()
+    for employee_days in calendar.values():
+        day_set.update(employee_days.keys())
+    return sorted(day_set)
+
+
+def _write_header(sheet: Worksheet, all_dates: List[date]) -> None:
+    """Write the first row with fixed headers, date columns and average columns."""
+    sheet.cell(row=1, column=1, value="ФИО")
+    sheet.cell(row=1, column=2, value="Начало рабочего дня")
+    sheet.cell(row=1, column=3, value="Конец рабочего дня")
+    sheet.cell(row=1, column=4, value="Продолжительность работы")
+    sheet.cell(row=1, column=5, value="Показатель")
+
+    first_date_column = 6
+    for date_index, day_value in enumerate(all_dates):
+        column_index = first_date_column + date_index
+        cell = sheet.cell(row=1, column=column_index, value=day_value)
+        cell.number_format = "dd.mm.yyyy"
+
+    average_headers = (
+        "Среднее время прихода",
+        "Среднее время ухода",
+        "Среднее время работы",
+        "Среднее отклонение прихода",
+        "Среднее время переработок",
+    )
+    first_average_column = first_date_column + len(all_dates)
+    for offset, label in enumerate(average_headers):
+        sheet.cell(row=1, column=first_average_column + offset, value=label)
+
+
+def _write_body(
+    sheet: Worksheet,
+    calendar: EmployeeCalendar,
+    all_dates: List[date],
+    default_official_time: time,
+    default_leave_time: time
+) -> None:
+    """Write employee rows with values and formulas."""
+    first_data_column = 6
+    first_average_column = first_data_column + len(all_dates)
+
+    for employee_index, employee_name in enumerate(sorted(calendar)):
+        arrival_row = 2 + employee_index * 5
+        leave_row = arrival_row + 1
+        work_row = arrival_row + 2
+        delta_row = arrival_row + 3
+        overtime_row = arrival_row + 4
+
+        sheet.cell(row=arrival_row, column=1, value=employee_name)
+
+        sheet.cell(row=arrival_row, column=2, value=default_official_time)
+        sheet.cell(row=arrival_row, column=2).number_format = "hh:mm"
+
+        sheet.cell(row=2, column=3, value=default_leave_time)  # 18:00 в B
+        sheet.cell(row=2, column=3).number_format = "hh:mm"
+
+        sheet.cell(row=2, column=4, value=time(9, 0))
+        sheet.cell(row=2, column=4).number_format = "hh:mm"
+
+        sheet.cell(row=arrival_row, column=5, value="Время прихода")
+        sheet.cell(row=leave_row, column=5, value="Время ухода")
+        sheet.cell(row=work_row, column=5, value="Длительность факт")
+        sheet.cell(row=delta_row, column=5, value="Отклонение по времени прихода")
+        sheet.cell(row=overtime_row, column=5, value="Переработка")
+
+        employee_days: Dict[date, DayBounds] = calendar[employee_name]
+        for day_offset, day_value in enumerate(all_dates):
+            column_index = first_data_column + day_offset
+            column_letter = get_column_letter(column_index)
+
+            day_bounds = employee_days.get(day_value)
+            if day_bounds is not None:
+                arrival_cell = sheet.cell(row=arrival_row, column=column_index, value=day_bounds.arrival_time)
+                leave_cell = sheet.cell(row=leave_row, column=column_index, value=day_bounds.departure_time)
+                arrival_cell.number_format = "hh:mm"
+                leave_cell.number_format = "hh:mm"
+
+            work_formula = (
+                f'=IF(OR({column_letter}{arrival_row}="",{column_letter}{leave_row}=""),"",'
+                f"{column_letter}{leave_row}-{column_letter}{arrival_row})"
+            )
+            delta_formula = (
+                f'=IF({column_letter}{arrival_row}="","",'
+                f'IF({column_letter}{arrival_row}>=$B${arrival_row},'
+                f'TEXT({column_letter}{arrival_row}-$B${arrival_row},"ч:мм"),'
+                f'TEXT($B${arrival_row}-{column_letter}{arrival_row},"-ч:мм")))'
+            )
+            overtime_formula = (
+                f'=IF({column_letter}{work_row}="","",'
+                f'IF({column_letter}{work_row}>=$D$2,'
+                f'TEXT({column_letter}{work_row}-$D$2,"ч:мм"),'
+                f'TEXT($D$2-{column_letter}{work_row},"-ч:мм")))'
+            )
+
+
+            work_cell = sheet.cell(row=work_row, column=column_index, value=work_formula)
+            delta_cell = sheet.cell(row=delta_row, column=column_index, value=delta_formula)
+            work_cell.number_format = "[h]:mm"
+            delta_cell.number_format = "@"
+            sheet.cell(row=overtime_row, column=column_index, value=overtime_formula).number_format = "[h]:mm"
+
+        if all_dates:
+            start_column_letter = get_column_letter(first_data_column)
+            end_column_letter = get_column_letter(first_data_column + len(all_dates) - 1)
+
+            avg_arrival_formula = (
+                f'=IFERROR(AVERAGE({start_column_letter}{arrival_row}:{end_column_letter}{arrival_row}),"")'
+            )
+            avg_leave_formula = (
+                f'=IFERROR(AVERAGE({start_column_letter}{leave_row}:{end_column_letter}{leave_row}),"")'
+            )
+            avg_work_formula = (
+                f'=IFERROR(AVERAGE({start_column_letter}{work_row}:{end_column_letter}{work_row}),"")'
+            )
+            avg_delta_formula = (
+                f'=IFERROR(IF(AVERAGE({start_column_letter}{arrival_row}:{end_column_letter}{arrival_row})'
+                f'>=$B${arrival_row},'
+                f'TEXT(AVERAGE({start_column_letter}{arrival_row}:{end_column_letter}{arrival_row})'
+                f'-$B${arrival_row},"ч:мм"),'
+                f'TEXT($B${arrival_row}-AVERAGE({start_column_letter}{arrival_row}:'
+                f'{end_column_letter}{arrival_row}),"-ч:мм")),"")'
+            )
+            avg_overtime_formula = (
+                f'=IFERROR('
+                f'AVERAGE({start_column_letter}{overtime_row}:{end_column_letter}{overtime_row}),'
+                f'"")'
+            )
+
+            avg_arrival_cell = sheet.cell(
+                row=arrival_row, column=first_average_column, value=avg_arrival_formula
+            )
+            avg_leave_cell = sheet.cell(
+                row=leave_row, column=first_average_column + 1, value=avg_leave_formula
+            )
+            avg_work_cell = sheet.cell(
+                row=work_row, column=first_average_column + 2, value=avg_work_formula
+            )
+            avg_delta_cell = sheet.cell(
+                row=delta_row, column=first_average_column + 3, value=avg_delta_formula
+            )
+            avg_overtime_cell = sheet.cell(
+                row=overtime_row, column=first_average_column + 4, value=avg_overtime_formula
+            )
+
+            avg_arrival_cell.number_format = "hh:mm"
+            avg_leave_cell.number_format = "hh:mm"
+            avg_work_cell.number_format = "[h]:mm"
+            avg_delta_cell.number_format = "@"
+            avg_overtime_cell.number_format = "[h]:mm"
+
+
+def _apply_layout(sheet: Worksheet, all_dates: List[date]) -> None:
+    """Apply basic workbook style, widths and frozen panes."""
+    total_columns = 4 + len(all_dates) + 6
+    last_row = max(1, sheet.max_row)
+
+    sheet.freeze_panes = "F2"
+    sheet.column_dimensions["A"].width = 34
+    sheet.column_dimensions["B"].width = 18
+    sheet.column_dimensions["C"].width = 28
+    sheet.column_dimensions["E"].width = 60
+
+    for column_index in range(4, total_columns + 1):
+        letter = get_column_letter(column_index)
+        sheet.column_dimensions[letter].width = 14
+
+    for column_index in range(1, total_columns + 1):
+        header_cell = sheet.cell(row=1, column=column_index)
+        header_cell.font = Font(bold=True)
+        header_cell.fill = HEADER_FILL
+        header_cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    for row_index in range(1, last_row + 1):
+        for column_index in range(1, total_columns + 1):
+            cell = sheet.cell(row=row_index, column=column_index)
+            cell.border = THIN_BORDER
+            if row_index > 1 and column_index >= 4:
+                cell.alignment = Alignment(horizontal="center", vertical="center")
