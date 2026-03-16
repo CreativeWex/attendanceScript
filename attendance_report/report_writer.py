@@ -480,3 +480,59 @@ def _apply_conditional_formatting(
         sheet.conditional_formatting.add(overtime_range, overtime_dark_green)
         sheet.conditional_formatting.add(overtime_range, overtime_light_red)
         sheet.conditional_formatting.add(overtime_range, overtime_dark_red)
+
+        # Переработка факт (с учетом отсутствия в течение дня)
+        work_minus_absence_row = arrival_row + 6
+        overtime_minus_absence_row = arrival_row + 7
+        overtime_factual_range = (
+            f"{start_col}{overtime_minus_absence_row}:{end_col}{overtime_minus_absence_row}"
+        )
+        diff_factual_expr = f"{start_col}{work_minus_absence_row}-$D${arrival_row}"
+
+        overtime_factual_light_green = FormulaRule(
+            formula=[
+                f'AND({start_col}{work_minus_absence_row}<>"",'
+                f'{diff_factual_expr}>0,'
+                f'{diff_factual_expr}<=1/48)'
+            ],
+            fill=LIGHT_GREEN_FILL,
+            font=BLACK_FONT,
+        )
+        overtime_factual_dark_green = FormulaRule(
+            formula=[
+                f'AND({start_col}{work_minus_absence_row}<>"",'
+                f'{diff_factual_expr}>1/48)'
+            ],
+            fill=DARK_GREEN_FILL,
+            font=BLACK_FONT,
+        )
+        overtime_factual_light_red = FormulaRule(
+            formula=[
+                f'AND({start_col}{work_minus_absence_row}<>"",'
+                f'{diff_factual_expr}<0,'
+                f'{diff_factual_expr}>=-1/48)'
+            ],
+            fill=LIGHT_RED_FILL,
+            font=BLACK_FONT,
+        )
+        overtime_factual_dark_red = FormulaRule(
+            formula=[
+                f'AND({start_col}{work_minus_absence_row}<>"",'
+                f'{diff_factual_expr}<-1/48)'
+            ],
+            fill=DARK_RED_FILL,
+            font=BLACK_FONT,
+        )
+
+        sheet.conditional_formatting.add(
+            overtime_factual_range, overtime_factual_light_green
+        )
+        sheet.conditional_formatting.add(
+            overtime_factual_range, overtime_factual_dark_green
+        )
+        sheet.conditional_formatting.add(
+            overtime_factual_range, overtime_factual_light_red
+        )
+        sheet.conditional_formatting.add(
+            overtime_factual_range, overtime_factual_dark_red
+        )
