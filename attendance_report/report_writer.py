@@ -24,7 +24,7 @@ THIN_BORDER = Border(
     top=Side(style="thin"),
     bottom=Side(style="thin"),
 )
-
+THICK_SIDE = Side(style="thick")
 
 def write_report(
     output_path: Path,
@@ -75,6 +75,9 @@ def _write_header(sheet: Worksheet, all_dates: List[date]) -> None:
         "Среднее время работы",
         "Среднее отклонение прихода",
         "Среднее время переработок",
+        "Среднее отсутствие в течение дня",
+        "Средняя длительность факт (с учетом отсутствия в течение дня)",
+        "Переработка факт (с учетом отсутствия в течение дня)",
     )
     first_average_column = first_date_column + len(all_dates)
     for offset, label in enumerate(average_headers):
@@ -93,11 +96,14 @@ def _write_body(
     first_average_column = first_data_column + len(all_dates)
 
     for employee_index, employee_name in enumerate(sorted(calendar)):
-        arrival_row = 2 + employee_index * 5
+        arrival_row = 2 + employee_index * 8
         leave_row = arrival_row + 1
         work_row = arrival_row + 2
         delta_row = arrival_row + 3
         overtime_row = arrival_row + 4
+        absence_row = arrival_row + 5
+        work_minus_absence_row = arrival_row + 6
+        overtime_minus_absence_row = arrival_row + 7
 
         sheet.cell(row=arrival_row, column=1, value=employee_name)
 
@@ -117,6 +123,17 @@ def _write_body(
         sheet.cell(row=work_row, column=5, value="Длительность факт")
         sheet.cell(row=delta_row, column=5, value="Отклонение по времени прихода")
         sheet.cell(row=overtime_row, column=5, value="Переработка")
+        sheet.cell(row=absence_row, column=5, value="Отсутствие в течение дня")
+        sheet.cell(
+            row=work_minus_absence_row,
+            column=5,
+            value="Длительность факт (с учетом отсутствия в течение дня)",
+        )
+        sheet.cell(
+            row=overtime_minus_absence_row,
+            column=5,
+            value="Переработка факт (с учетом отсутствия в течение дня)",
+        )
 
         employee_days: Dict[date, DayBounds] = calendar[employee_name]
         for day_offset, day_value in enumerate(all_dates):
@@ -125,10 +142,24 @@ def _write_body(
 
             day_bounds = employee_days.get(day_value)
             if day_bounds is not None:
-                arrival_cell = sheet.cell(row=arrival_row, column=column_index, value=day_bounds.arrival_time)
-                leave_cell = sheet.cell(row=leave_row, column=column_index, value=day_bounds.departure_time)
+                arrival_cell = sheet.cell(
+                    row=arrival_row,
+                    column=column_index,
+                    value=day_bounds.arrival_time,
+                )
+                leave_cell = sheet.cell(
+                    row=leave_row,
+                    column=column_index,
+                    value=day_bounds.departure_time,
+                )
+                absence_cell = sheet.cell(
+                    row=absence_row,
+                    column=column_index,
+                    value=day_bounds.absence_duration,
+                )
                 arrival_cell.number_format = "hh:mm"
                 leave_cell.number_format = "hh:mm"
+                absence_cell.number_format = "[h]:mm"
 
             work_formula = (
                 f'=IF(OR({column_letter}{arrival_row}="",{column_letter}{leave_row}=""),"",'
@@ -146,13 +177,44 @@ def _write_body(
                 f'TEXT({column_letter}{work_row}-$D${arrival_row},"ч:мм"),'
                 f'TEXT($D${arrival_row}-{column_letter}{work_row},"-ч:мм")))'
             )
+            work_minus_absence_formula = (
+                f'=IF(OR({column_letter}{work_row}="",{column_letter}{absence_row}=""),"",'
+                f"{column_letter}{work_row}-{column_letter}{absence_row})"
+            )
+            # Переработка факт (с учетом отсутствия): переработка считается
+            # от фактической длительности с учетом отсутствия, а не как
+            # разность текстовой переработки и отсутствия.
+            overtime_minus_absence_formula = (
+                f'=IF({column_letter}{work_minus_absence_row}="","",'
+                f'IF({column_letter}{work_minus_absence_row}>=$D${arrival_row},'
+                f'TEXT({column_letter}{work_minus_absence_row}-$D${arrival_row},"ч:мм"),'
+                f'TEXT($D${arrival_row}-{column_letter}{work_minus_absence_row},"-ч:мм")))'
+            )
 
 
-            work_cell = sheet.cell(row=work_row, column=column_index, value=work_formula)
-            delta_cell = sheet.cell(row=delta_row, column=column_index, value=delta_formula)
+            work_cell = sheet.cell(
+                row=work_row, column=column_index, value=work_formula
+            )
+            delta_cell = sheet.cell(
+                row=delta_row, column=column_index, value=delta_formula
+            )
+            work_minus_absence_cell = sheet.cell(
+                row=work_minus_absence_row,
+                column=column_index,
+                value=work_minus_absence_formula,
+            )
+            overtime_minus_absence_cell = sheet.cell(
+                row=overtime_minus_absence_row,
+                column=column_index,
+                value=overtime_minus_absence_formula,
+            )
             work_cell.number_format = "[h]:mm"
             delta_cell.number_format = "@"
-            sheet.cell(row=overtime_row, column=column_index, value=overtime_formula).number_format = "[h]:mm"
+            sheet.cell(
+                row=overtime_row, column=column_index, value=overtime_formula
+            ).number_format = "[h]:mm"
+            work_minus_absence_cell.number_format = "[h]:mm"
+            overtime_minus_absence_cell.number_format = "[h]:mm"
 
         if all_dates:
             start_column_letter = get_column_letter(first_data_column)
@@ -183,6 +245,22 @@ def _write_body(
                 f'TEXT($D${arrival_row}-AVERAGE({start_column_letter}{work_row}:'
                 f'{end_column_letter}{work_row}),"-ч:мм")),"")'
             )
+            avg_absence_formula = (
+                f'=IFERROR(AVERAGE({start_column_letter}{absence_row}:{end_column_letter}{absence_row}),"")'
+            )
+            avg_work_minus_absence_formula = (
+                f'=IFERROR(AVERAGE({start_column_letter}{work_minus_absence_row}:{end_column_letter}{work_minus_absence_row}),"")'
+            )
+            # Средняя «переработка факт (с учетом отсутствия)» считается
+            # по среднему значению длительности с учетом отсутствия.
+            avg_overtime_minus_absence_formula = (
+                f'=IFERROR(IF(AVERAGE({start_column_letter}{work_minus_absence_row}:{end_column_letter}{work_minus_absence_row})'
+                f'>=$D${arrival_row},'
+                f'TEXT(AVERAGE({start_column_letter}{work_minus_absence_row}:{end_column_letter}{work_minus_absence_row})'
+                f'-$D${arrival_row},"ч:мм"),'
+                f'TEXT($D${arrival_row}-AVERAGE({start_column_letter}{work_minus_absence_row}:'
+                f'{end_column_letter}{work_minus_absence_row}),"-ч:мм")),"")'
+            )
 
             avg_arrival_cell = sheet.cell(
                 row=arrival_row, column=first_average_column, value=avg_arrival_formula
@@ -197,7 +275,24 @@ def _write_body(
                 row=delta_row, column=first_average_column + 3, value=avg_delta_formula
             )
             avg_overtime_cell = sheet.cell(
-                row=overtime_row, column=first_average_column + 4, value=avg_overtime_formula
+                row=overtime_row,
+                column=first_average_column + 4,
+                value=avg_overtime_formula,
+            )
+            avg_absence_cell = sheet.cell(
+                row=absence_row,
+                column=first_average_column + 5,
+                value=avg_absence_formula,
+            )
+            avg_work_minus_absence_cell = sheet.cell(
+                row=work_minus_absence_row,
+                column=first_average_column + 6,
+                value=avg_work_minus_absence_formula,
+            )
+            avg_overtime_minus_absence_cell = sheet.cell(
+                row=overtime_minus_absence_row,
+                column=first_average_column + 7,
+                value=avg_overtime_minus_absence_formula,
             )
 
             avg_arrival_cell.number_format = "hh:mm"
@@ -205,11 +300,14 @@ def _write_body(
             avg_work_cell.number_format = "[h]:mm"
             avg_delta_cell.number_format = "@"
             avg_overtime_cell.number_format = "[h]:mm"
+            avg_absence_cell.number_format = "[h]:mm"
+            avg_work_minus_absence_cell.number_format = "[h]:mm"
+            avg_overtime_minus_absence_cell.number_format = "[h]:mm"
 
 
 def _apply_layout(sheet: Worksheet, all_dates: List[date]) -> None:
     """Apply basic workbook style, widths and frozen panes."""
-    total_columns = 4 + len(all_dates) + 6
+    total_columns = 4 + len(all_dates) + 9
     last_row = max(1, sheet.max_row)
 
     sheet.freeze_panes = "F2"
@@ -235,6 +333,56 @@ def _apply_layout(sheet: Worksheet, all_dates: List[date]) -> None:
             if row_index > 1 and column_index >= 4:
                 cell.alignment = Alignment(horizontal="center", vertical="center")
 
+    # Толстые рамки вокруг блока строк одного сотрудника.
+    # Определяем начало блока по строкам, где в колонке E стоит "Время прихода".
+    if last_row > 1:
+        employee_starts = []
+        for row_index in range(2, last_row + 1):
+            marker = sheet.cell(row=row_index, column=5).value
+            if marker == "Время прихода":
+                employee_starts.append(row_index)
+
+        for idx, start_row in enumerate(employee_starts):
+            end_row = (
+                employee_starts[idx + 1] - 1
+                if idx + 1 < len(employee_starts)
+                else last_row
+            )
+
+            for column_index in range(1, total_columns + 1):
+                cell = sheet.cell(row=start_row, column=column_index)
+                cell.border = Border(
+                    left=cell.border.left,
+                    right=cell.border.right,
+                    top=THICK_SIDE,
+                    bottom=cell.border.bottom,
+                )
+
+                cell = sheet.cell(row=end_row, column=column_index)
+                cell.border = Border(
+                    left=cell.border.left,
+                    right=cell.border.right,
+                    top=cell.border.top,
+                    bottom=THICK_SIDE,
+                )
+
+            for row_index in range(start_row, end_row + 1):
+                cell = sheet.cell(row=row_index, column=1)
+                cell.border = Border(
+                    left=THICK_SIDE,
+                    right=cell.border.right,
+                    top=cell.border.top,
+                    bottom=cell.border.bottom,
+                )
+
+                cell = sheet.cell(row=row_index, column=total_columns)
+                cell.border = Border(
+                    left=cell.border.left,
+                    right=THICK_SIDE,
+                    top=cell.border.top,
+                    bottom=cell.border.bottom,
+                )
+
     _apply_conditional_formatting(sheet, all_dates, last_row)
 
 
@@ -247,10 +395,15 @@ def _apply_conditional_formatting(
     first_data_column = 6
     start_col = get_column_letter(first_data_column)
     end_col = get_column_letter(first_data_column + len(all_dates) - 1)
-    num_employees = (last_row - 1) // 5
 
-    for employee_index in range(num_employees):
-        arrival_row = 2 + employee_index * 5
+    # Определяем начало блоков сотрудников по строкам с "Время прихода".
+    employee_starts = []
+    for row_index in range(2, last_row + 1):
+        marker = sheet.cell(row=row_index, column=5).value
+        if marker == "Время прихода":
+            employee_starts.append(row_index)
+
+    for employee_index, arrival_row in enumerate(employee_starts):
         delta_row = arrival_row + 3
         overtime_row = arrival_row + 4
 
