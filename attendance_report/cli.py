@@ -113,7 +113,7 @@ def _print_top_work_duration(
     work_mode_by_fio: Optional[Dict[str, str]],
     top_n: int = 20,
 ) -> None:
-    totals: Dict[str, timedelta] = {}
+    averages: Dict[str, timedelta] = {}
     for employee_name, days in calendar.items():
         if work_mode_by_fio is None:
             continue
@@ -122,11 +122,14 @@ def _print_top_work_duration(
             continue
 
         total = timedelta(0)
+        day_count = 0
         for day, bounds in days.items():
             total += _compute_day_work_duration(
                 day, bounds.arrival_time, bounds.departure_time
             )
-        totals[employee_name] = total
+            day_count += 1
+        if day_count:
+            averages[employee_name] = total / day_count
 
     if work_mode_by_fio is None:
         print(
@@ -135,7 +138,7 @@ def _print_top_work_duration(
         )
         return
 
-    if not totals:
+    if not averages:
         print(
             f"\nТоп-20 по времени работы не построен: не найдено сотрудников с режимом "
             f"'{OFFICE_WORK_MODE}'."
@@ -143,14 +146,14 @@ def _print_top_work_duration(
         return
 
     ranked: List[Tuple[str, timedelta]] = sorted(
-        totals.items(), key=lambda item: item[1]
+        averages.items(), key=lambda item: item[1]
     )
 
-    print("\nTop-20 сотрудников с наибольшим временем работы (Длительность факт, суммарно):")
+    print("\nTop-20 сотрудников с наибольшим временем работы (Среднее время работы):")
     for idx, (name, total) in enumerate(reversed(ranked[-top_n:]), start=1):
         print(f"{idx:>2}. {name}: {_format_timedelta_hhmm(total)}")
 
-    print("\nTop-20 сотрудников с наименьшим временем работы (Длительность факт, суммарно):")
+    print("\nTop-20 сотрудников с наименьшим временем работы (Среднее время работы):")
     for idx, (name, total) in enumerate(ranked[:top_n], start=1):
         print(f"{idx:>2}. {name}: {_format_timedelta_hhmm(total)}")
 
