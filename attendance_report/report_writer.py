@@ -14,9 +14,9 @@ from .models import DayBounds, EmployeeCalendar
 
 HEADER_FILL = PatternFill(fill_type="solid", start_color="D9E1F2", end_color="D9E1F2")
 LIGHT_RED_FILL = PatternFill(fill_type="solid", start_color="FFC7CE", end_color="FFC7CE")
-DARK_RED_FILL = PatternFill(fill_type="solid", start_color="9C0006", end_color="9C0006")
+DARK_RED_FILL = PatternFill(fill_type="solid", start_color="C45050", end_color="C45050")
 LIGHT_GREEN_FILL = PatternFill(fill_type="solid", start_color="C6EFCE", end_color="C6EFCE")
-DARK_GREEN_FILL = PatternFill(fill_type="solid", start_color="006100", end_color="006100")
+DARK_GREEN_FILL = PatternFill(fill_type="solid", start_color="2D7D2F", end_color="2D7D2F")
 BLACK_FONT = Font(color="000000")
 THIN_BORDER = Border(
     left=Side(style="thin"),
