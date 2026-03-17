@@ -9,6 +9,8 @@ from .aggregator import AttendanceAggregator
 from .parsers import load_work_mode_mapping, parse_directory
 from .report_writer import write_report
 
+OFFICE_WORK_MODE = "офисный труд"
+
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     """Parse CLI arguments for report generation command."""
@@ -64,9 +66,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if not calendar:
         raise RuntimeError("No attendance data found in input files.")
 
-    _print_top_work_duration(calendar, top_n=20)
-
     work_mode_by_fio = load_work_mode_mapping(input_dir)
+
+    _print_top_work_duration(calendar, work_mode_by_fio=work_mode_by_fio, top_n=20)
 
     write_report(
         output_path=output_file,
@@ -106,15 +108,39 @@ def _format_timedelta_hhmm(value: timedelta) -> str:
     return f"{sign}{hours}:{minutes:02d}"
 
 
-def _print_top_work_duration(calendar, top_n: int = 20) -> None:
+def _print_top_work_duration(
+    calendar,
+    work_mode_by_fio: Optional[Dict[str, str]],
+    top_n: int = 20,
+) -> None:
     totals: Dict[str, timedelta] = {}
     for employee_name, days in calendar.items():
+        if work_mode_by_fio is None:
+            continue
+        mode = work_mode_by_fio.get(employee_name)
+        if mode is None or mode.strip().lower() != OFFICE_WORK_MODE:
+            continue
+
         total = timedelta(0)
         for day, bounds in days.items():
             total += _compute_day_work_duration(
                 day, bounds.arrival_time, bounds.departure_time
             )
         totals[employee_name] = total
+
+    if work_mode_by_fio is None:
+        print(
+            "\nТоп-20 по времени работы не построен: не найден файл режима работы "
+            "(нужно учитывать только режим 'офисный труд')."
+        )
+        return
+
+    if not totals:
+        print(
+            f"\nТоп-20 по времени работы не построен: не найдено сотрудников с режимом "
+            f"'{OFFICE_WORK_MODE}'."
+        )
+        return
 
     ranked: List[Tuple[str, timedelta]] = sorted(
         totals.items(), key=lambda item: item[1]
