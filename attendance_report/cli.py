@@ -68,7 +68,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     work_mode_by_fio = load_work_mode_mapping(input_dir)
 
-    _print_top_work_duration(calendar, work_mode_by_fio=work_mode_by_fio, top_n=20)
+    _print_top_work_duration(calendar, work_mode_by_fio=work_mode_by_fio, top_n=30)
 
     write_report(
         output_path=output_file,
@@ -149,11 +149,11 @@ def _print_top_work_duration(
         averages.items(), key=lambda item: item[1]
     )
 
-    print("\nTop-20 сотрудников с наибольшим временем работы (Среднее время работы):")
+    print("\nTop-30 сотрудников с наибольшим временем работы (Среднее время работы):")
     for idx, (name, total) in enumerate(reversed(ranked[-top_n:]), start=1):
         print(f"{idx:>2}. {name}: {_format_timedelta_hhmm(total)}")
 
-    print("\nTop-20 сотрудников с наименьшим временем работы (Среднее время работы):")
+    print("\nTop-30 сотрудников с наименьшим временем работы (Среднее время работы):")
     for idx, (name, total) in enumerate(ranked[:top_n], start=1):
         print(f"{idx:>2}. {name}: {_format_timedelta_hhmm(total)}")
 
