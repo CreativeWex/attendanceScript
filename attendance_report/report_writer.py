@@ -338,6 +338,7 @@ def _apply_layout(sheet: Worksheet, all_dates: List[date]) -> None:
     last_row = max(1, sheet.max_row)
 
     sheet.freeze_panes = "G2"
+    sheet.sheet_properties.outlinePr.summaryBelow = True
     sheet.column_dimensions["A"].width = 34
     sheet.column_dimensions["B"].width = 18
     sheet.column_dimensions["C"].width = 28
@@ -376,6 +377,13 @@ def _apply_layout(sheet: Worksheet, all_dates: List[date]) -> None:
                 if idx + 1 < len(employee_starts)
                 else last_row
             )
+
+            # Скрываем/группируем три строки показателей для быстрого переключения в Excel (Outline).
+            # Отсутствие / Длительность факт (с учетом отсутствия) / Переработка факт (с учетом отсутствия)
+            for row_to_group in (start_row + 5, start_row + 6, start_row + 7):
+                if row_to_group <= last_row:
+                    sheet.row_dimensions[row_to_group].outlineLevel = 1
+                    sheet.row_dimensions[row_to_group].hidden = True
 
             for column_index in range(1, total_columns + 1):
                 cell = sheet.cell(row=start_row, column=column_index)
