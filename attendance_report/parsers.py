@@ -38,6 +38,10 @@ def parse_directory(input_dir: Path) -> Tuple[List[EventRecord], ParsingSummary]
         if not file_path.is_file():
             continue
 
+        # Не разбираем файлы режима работы как посещаемость
+        if file_path.name in ("Режим работы.xlsx", "Режимы работы.xlsx"):
+            continue
+
         suffix = file_path.suffix.lower()
         if suffix == ".xls":
             try:
@@ -392,3 +396,51 @@ def _extract_employee_name_from_stem(stem: str) -> str:
     # Fallback: оригинальная логика
     fallback = re.sub(r"[_\s]+", " ", cleaned).strip()
     return fallback or cleaned
+
+
+WORK_MODE_FILENAMES = ("Режим работы.xlsx", "Режимы работы.xlsx")
+
+
+def load_work_mode_mapping(input_dir: Path) -> Optional[Dict[str, str]]:
+    """Load ФИО -> режим работы from 'Режим работы.xlsx' or 'Режимы работы.xlsx' in input_dir.
+
+    File must have columns 'ФИО' and 'режим работы'. Returns None if neither file
+    is present; otherwise a dict (later row wins on duplicate FIO).
+    """
+    path = None
+    for name in WORK_MODE_FILENAMES:
+        candidate = input_dir / name
+        if candidate.is_file():
+            path = candidate
+            break
+    if path is None:
+        return None
+    workbook = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    sheet = workbook.active
+    header_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), None)
+    if not header_row:
+        workbook.close()
+        return {}
+    fio_idx: Optional[int] = None
+    mode_idx: Optional[int] = None
+    for idx, header in enumerate(header_row):
+        norm = _normalize_header(header)
+        if norm == "фио":
+            fio_idx = idx
+        if norm in ("режимработы", "режимыработы"):
+            mode_idx = idx
+    if fio_idx is None or mode_idx is None:
+        workbook.close()
+        return {}
+    result: Dict[str, str] = {}
+    for row in sheet.iter_rows(min_row=2, values_only=True):
+        if len(row) <= max(fio_idx, mode_idx):
+            continue
+        fio_val = row[fio_idx]
+        mode_val = row[mode_idx]
+        if fio_val is None or not str(fio_val).strip():
+            continue
+        fio = str(fio_val).strip()
+        result[fio] = str(mode_val).strip() if mode_val is not None else ""
+    workbook.close()
+    return result

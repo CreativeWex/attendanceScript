@@ -2,7 +2,7 @@
 
 from datetime import date, time
 from pathlib import Path
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Optional
 
 from openpyxl import Workbook
 from openpyxl.formatting.rule import FormulaRule
@@ -26,10 +26,15 @@ THIN_BORDER = Border(
 )
 THICK_SIDE = Side(style="thick")
 
+WORK_MODE_FILE_MISSING = "Не найден файл режима работы"
+WORK_MODE_EMPLOYEE_NOT_FOUND = "Информация по данному сотруднику не найдена"
+
+
 def write_report(
     output_path: Path,
     calendar: EmployeeCalendar,
     default_official_time: time = time(9, 0),
+    work_mode_by_fio: Optional[Dict[str, str]] = None,
 ) -> None:
     default_leave_time: time = time(18, 0)
 
@@ -40,7 +45,14 @@ def write_report(
 
     all_dates = _collect_sorted_dates(calendar)
     _write_header(sheet, all_dates)
-    _write_body(sheet, calendar, all_dates, default_official_time, default_leave_time)
+    _write_body(
+        sheet,
+        calendar,
+        all_dates,
+        default_official_time,
+        default_leave_time,
+        work_mode_by_fio,
+    )
     _apply_layout(sheet, all_dates)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -61,9 +73,10 @@ def _write_header(sheet: Worksheet, all_dates: List[date]) -> None:
     sheet.cell(row=1, column=2, value="Начало рабочего дня")
     sheet.cell(row=1, column=3, value="Конец рабочего дня")
     sheet.cell(row=1, column=4, value="Продолжительность работы")
-    sheet.cell(row=1, column=5, value="Показатель")
+    sheet.cell(row=1, column=5, value="Режим работы")
+    sheet.cell(row=1, column=6, value="Показатель")
 
-    first_date_column = 6
+    first_date_column = 7
     for date_index, day_value in enumerate(all_dates):
         column_index = first_date_column + date_index
         cell = sheet.cell(row=1, column=column_index, value=day_value)
@@ -89,11 +102,17 @@ def _write_body(
     calendar: EmployeeCalendar,
     all_dates: List[date],
     default_official_time: time,
-    default_leave_time: time
+    default_leave_time: time,
+    work_mode_by_fio: Optional[Dict[str, str]] = None,
 ) -> None:
     """Write employee rows with values and formulas."""
-    first_data_column = 6
+    first_data_column = 7
     first_average_column = first_data_column + len(all_dates)
+
+    if work_mode_by_fio is None:
+        work_mode_label = WORK_MODE_FILE_MISSING
+    else:
+        work_mode_label = None  # resolve per employee
 
     for employee_index, employee_name in enumerate(sorted(calendar)):
         arrival_row = 2 + employee_index * 8
@@ -107,6 +126,14 @@ def _write_body(
 
         sheet.cell(row=arrival_row, column=1, value=employee_name)
 
+        if work_mode_label is not None:
+            sheet.cell(row=arrival_row, column=5, value=work_mode_label)
+        else:
+            mode = work_mode_by_fio.get(
+                employee_name, WORK_MODE_EMPLOYEE_NOT_FOUND
+            )
+            sheet.cell(row=arrival_row, column=5, value=mode)
+
         sheet.cell(row=arrival_row, column=2, value=default_official_time)
         sheet.cell(row=arrival_row, column=2).number_format = "hh:mm"
 
@@ -118,20 +145,20 @@ def _write_body(
         sheet.cell(row=arrival_row, column=3, value=end_of_day_formula)
         sheet.cell(row=arrival_row, column=3).number_format = "hh:mm"
 
-        sheet.cell(row=arrival_row, column=5, value="Время прихода")
-        sheet.cell(row=leave_row, column=5, value="Время ухода")
-        sheet.cell(row=work_row, column=5, value="Длительность факт")
-        sheet.cell(row=delta_row, column=5, value="Отклонение по времени прихода")
-        sheet.cell(row=overtime_row, column=5, value="Переработка")
-        sheet.cell(row=absence_row, column=5, value="Отсутствие в течение дня")
+        sheet.cell(row=arrival_row, column=6, value="Время прихода")
+        sheet.cell(row=leave_row, column=6, value="Время ухода")
+        sheet.cell(row=work_row, column=6, value="Длительность факт")
+        sheet.cell(row=delta_row, column=6, value="Отклонение по времени прихода")
+        sheet.cell(row=overtime_row, column=6, value="Переработка")
+        sheet.cell(row=absence_row, column=6, value="Отсутствие в течение дня")
         sheet.cell(
             row=work_minus_absence_row,
-            column=5,
+            column=6,
             value="Длительность факт (с учетом отсутствия в течение дня)",
         )
         sheet.cell(
             row=overtime_minus_absence_row,
-            column=5,
+            column=6,
             value="Переработка факт (с учетом отсутствия в течение дня)",
         )
 
@@ -307,16 +334,17 @@ def _write_body(
 
 def _apply_layout(sheet: Worksheet, all_dates: List[date]) -> None:
     """Apply basic workbook style, widths and frozen panes."""
-    total_columns = 4 + len(all_dates) + 9
+    total_columns = 5 + len(all_dates) + 9
     last_row = max(1, sheet.max_row)
 
-    sheet.freeze_panes = "F2"
+    sheet.freeze_panes = "G2"
     sheet.column_dimensions["A"].width = 34
     sheet.column_dimensions["B"].width = 18
     sheet.column_dimensions["C"].width = 28
-    sheet.column_dimensions["E"].width = 60
+    sheet.column_dimensions["E"].width = 28
+    sheet.column_dimensions["F"].width = 60
 
-    for column_index in range(4, total_columns + 1):
+    for column_index in range(7, total_columns + 1):
         letter = get_column_letter(column_index)
         sheet.column_dimensions[letter].width = 14
 
@@ -334,11 +362,11 @@ def _apply_layout(sheet: Worksheet, all_dates: List[date]) -> None:
                 cell.alignment = Alignment(horizontal="center", vertical="center")
 
     # Толстые рамки вокруг блока строк одного сотрудника.
-    # Определяем начало блока по строкам, где в колонке E стоит "Время прихода".
+    # Определяем начало блока по строкам, где в колонке F стоит "Время прихода".
     if last_row > 1:
         employee_starts = []
         for row_index in range(2, last_row + 1):
-            marker = sheet.cell(row=row_index, column=5).value
+            marker = sheet.cell(row=row_index, column=6).value
             if marker == "Время прихода":
                 employee_starts.append(row_index)
 
@@ -392,14 +420,14 @@ def _apply_conditional_formatting(
     """Apply conditional formatting for delta and overtime rows only."""
     if not all_dates:
         return
-    first_data_column = 6
+    first_data_column = 7
     start_col = get_column_letter(first_data_column)
     end_col = get_column_letter(first_data_column + len(all_dates) - 1)
 
     # Определяем начало блоков сотрудников по строкам с "Время прихода".
     employee_starts = []
     for row_index in range(2, last_row + 1):
-        marker = sheet.cell(row=row_index, column=5).value
+        marker = sheet.cell(row=row_index, column=6).value
         if marker == "Время прихода":
             employee_starts.append(row_index)
 

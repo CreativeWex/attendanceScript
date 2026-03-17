@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from .aggregator import AttendanceAggregator
-from .parsers import parse_directory
+from .parsers import load_work_mode_mapping, parse_directory
 from .report_writer import write_report
 
 
@@ -64,10 +64,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if not calendar:
         raise RuntimeError("No attendance data found in input files.")
 
+    work_mode_by_fio = load_work_mode_mapping(input_dir)
+
     write_report(
         output_path=output_file,
         calendar=calendar,
         default_official_time=official_time,
+        work_mode_by_fio=work_mode_by_fio,
     )
 
     print(f"Processed files: {len(summary.processed_files)}")
