@@ -1,9 +1,9 @@
 """CLI entrypoint for attendance report generation."""
 
 import argparse
-from datetime import datetime, time
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from .aggregator import AttendanceAggregator
 from .parsers import load_work_mode_mapping, parse_directory
@@ -64,6 +64,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if not calendar:
         raise RuntimeError("No attendance data found in input files.")
 
+    _print_top_work_duration(calendar, top_n=20)
+
     work_mode_by_fio = load_work_mode_mapping(input_dir)
 
     write_report(
@@ -84,6 +86,47 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(f"- {skipped_path.name}: {reason}")
 
     return 0
+
+
+def _compute_day_work_duration(day: date, arrival: time, departure: time) -> timedelta:
+    start_dt = datetime.combine(day, arrival)
+    end_dt = datetime.combine(day, departure)
+    if end_dt < start_dt:
+        end_dt += timedelta(days=1)
+    return end_dt - start_dt
+
+
+def _format_timedelta_hhmm(value: timedelta) -> str:
+    total_seconds = int(value.total_seconds())
+    sign = "-" if total_seconds < 0 else ""
+    total_seconds = abs(total_seconds)
+    total_minutes = total_seconds // 60
+    hours = total_minutes // 60
+    minutes = total_minutes % 60
+    return f"{sign}{hours}:{minutes:02d}"
+
+
+def _print_top_work_duration(calendar, top_n: int = 20) -> None:
+    totals: Dict[str, timedelta] = {}
+    for employee_name, days in calendar.items():
+        total = timedelta(0)
+        for day, bounds in days.items():
+            total += _compute_day_work_duration(
+                day, bounds.arrival_time, bounds.departure_time
+            )
+        totals[employee_name] = total
+
+    ranked: List[Tuple[str, timedelta]] = sorted(
+        totals.items(), key=lambda item: item[1]
+    )
+
+    print("\nTop-20 сотрудников с наибольшим временем работы (Длительность факт, суммарно):")
+    for idx, (name, total) in enumerate(reversed(ranked[-top_n:]), start=1):
+        print(f"{idx:>2}. {name}: {_format_timedelta_hhmm(total)}")
+
+    print("\nTop-20 сотрудников с наименьшим временем работы (Длительность факт, суммарно):")
+    for idx, (name, total) in enumerate(ranked[:top_n], start=1):
+        print(f"{idx:>2}. {name}: {_format_timedelta_hhmm(total)}")
 
 
 if __name__ == "__main__":
