@@ -90,6 +90,16 @@ def _write_header(sheet: Worksheet, all_dates: List[date]) -> None:
         header_label = "Выходной" if day_value.weekday() >= 5 else "Будний"
         sheet.cell(row=2, column=column_index, value=header_label)
 
+        # Third header row: "Сокращенный" for the day immediately before
+        # Saturday in the sorted `all_dates` list.
+        short_label = (
+            "Сокращенный"
+            if date_index + 1 < len(all_dates) and all_dates[date_index + 1].weekday() == 5
+            else ""
+        )
+        if short_label:
+            sheet.cell(row=3, column=column_index, value=short_label)
+
     average_headers = (
         "Среднее время прихода",
         "Среднее время ухода",
@@ -123,7 +133,7 @@ def _write_body(
         work_mode_label = None  # resolve per employee
 
     for employee_index, employee_name in enumerate(sorted(calendar)):
-        arrival_row = 3 + employee_index * 8
+        arrival_row = 4 + employee_index * 8
         leave_row = arrival_row + 1
         work_row = arrival_row + 2
         delta_row = arrival_row + 3
@@ -175,6 +185,11 @@ def _write_body(
             column_index = first_data_column + day_offset
             column_letter = get_column_letter(column_index)
             day_type_cell = f"{column_letter}$2"
+            short_day_cell = f"{column_letter}$3"
+            plan_duration_expr = (
+                f'IF({short_day_cell}="Сокращенный",$D${arrival_row}-TIME(1,15,0),'
+                f'$D${arrival_row})'
+            )
 
             day_bounds = employee_days.get(day_value)
             if day_bounds is not None:
@@ -209,9 +224,9 @@ def _write_body(
             )
             overtime_formula_workday = (
                 f'=IF({column_letter}{work_row}="","",'
-                f'IF({column_letter}{work_row}>=$D${arrival_row},'
-                f'TEXT({column_letter}{work_row}-$D${arrival_row},"ч:мм"),'
-                f'TEXT($D${arrival_row}-{column_letter}{work_row},"-ч:мм")))'
+                f'IF({column_letter}{work_row}>={plan_duration_expr},'
+                f'TEXT({column_letter}{work_row}-({plan_duration_expr}),"ч:мм"),'
+                f'TEXT(({plan_duration_expr})-{column_letter}{work_row},"-ч:мм")))'
             )
             work_minus_absence_formula = (
                 f'=IF(OR({column_letter}{work_row}="",{column_letter}{absence_row}=""),"",'
@@ -222,9 +237,9 @@ def _write_body(
             # разность текстовой переработки и отсутствия.
             overtime_minus_absence_formula_workday = (
                 f'=IF({column_letter}{work_minus_absence_row}="","",'
-                f'IF({column_letter}{work_minus_absence_row}>=$D${arrival_row},'
-                f'TEXT({column_letter}{work_minus_absence_row}-$D${arrival_row},"ч:мм"),'
-                f'TEXT($D${arrival_row}-{column_letter}{work_minus_absence_row},"-ч:мм")))'
+                f'IF({column_letter}{work_minus_absence_row}>={plan_duration_expr},'
+                f'TEXT({column_letter}{work_minus_absence_row}-({plan_duration_expr}),"ч:мм"),'
+                f'TEXT(({plan_duration_expr})-{column_letter}{work_minus_absence_row},"-ч:мм")))'
             )
 
             delta_formula = f'=IF({day_type_cell}="Выходной","—",{delta_formula_workday[1:]})'
@@ -263,6 +278,7 @@ def _write_body(
             start_column_letter = get_column_letter(first_data_column)
             end_column_letter = get_column_letter(first_data_column + len(all_dates) - 1)
             day_type_range = f"{start_column_letter}$2:{end_column_letter}$2"
+            short_type_range = f"{start_column_letter}$3:{end_column_letter}$3"
 
             avg_arrival_formula = (
                 f'=IFERROR(AVERAGEIF({day_type_range},"Будний",'
@@ -286,14 +302,20 @@ def _write_body(
                 f'TEXT($B${arrival_row}-AVERAGEIF({day_type_range},"Будний",'
                 f"{start_column_letter}{arrival_row}:{end_column_letter}{arrival_row}),\"-ч:мм\")),\"\")"
             )
+            avg_plan_expr = (
+                f'$D${arrival_row}-TIME(1,15,0)*('
+                f'COUNTIFS({day_type_range},"Будний",{short_type_range},"Сокращенный")'
+                f'/COUNTIF({day_type_range},"Будний")'
+                f')'
+            )
             avg_overtime_formula = (
                 f'=IFERROR(IF(AVERAGEIF({day_type_range},"Будний",'
                 f"{start_column_letter}{work_row}:{end_column_letter}{work_row})"
-                f'>=$D${arrival_row},'
+                f'>={avg_plan_expr},'
                 f'TEXT(AVERAGEIF({day_type_range},"Будний",'
                 f"{start_column_letter}{work_row}:{end_column_letter}{work_row})"
-                f'-$D${arrival_row},"ч:мм"),'
-                f'TEXT($D${arrival_row}-AVERAGEIF({day_type_range},"Будний",'
+                f'-({avg_plan_expr}),"ч:мм"),'
+                f'TEXT(({avg_plan_expr})-AVERAGEIF({day_type_range},"Будний",'
                 f"{start_column_letter}{work_row}:{end_column_letter}{work_row}),\"-ч:мм\")),\"\")"
             )
             avg_absence_formula = (
@@ -309,11 +331,11 @@ def _write_body(
             avg_overtime_minus_absence_formula = (
                 f'=IFERROR(IF(AVERAGEIF({day_type_range},"Будний",'
                 f"{start_column_letter}{work_minus_absence_row}:{end_column_letter}{work_minus_absence_row})"
-                f'>=$D${arrival_row},'
+                f'>={avg_plan_expr},'
                 f'TEXT(AVERAGEIF({day_type_range},"Будний",'
                 f"{start_column_letter}{work_minus_absence_row}:{end_column_letter}{work_minus_absence_row})"
-                f'-$D${arrival_row},"ч:мм"),'
-                f'TEXT($D${arrival_row}-AVERAGEIF({day_type_range},"Будний",'
+                f'-({avg_plan_expr}),"ч:мм"),'
+                f'TEXT(({avg_plan_expr})-AVERAGEIF({day_type_range},"Будний",'
                 f"{start_column_letter}{work_minus_absence_row}:{end_column_letter}{work_minus_absence_row}),\"-ч:мм\")),\"\")"
             )
 
@@ -365,7 +387,7 @@ def _apply_layout(sheet: Worksheet, all_dates: List[date]) -> None:
     total_columns = 5 + len(all_dates) + 9
     last_row = max(1, sheet.max_row)
 
-    sheet.freeze_panes = "G3"
+    sheet.freeze_panes = "G4"
     sheet.sheet_properties.outlinePr.summaryBelow = True
     sheet.column_dimensions["A"].width = 34
     sheet.column_dimensions["B"].width = 18
@@ -387,16 +409,26 @@ def _apply_layout(sheet: Worksheet, all_dates: List[date]) -> None:
         for column_index in range(1, total_columns + 1):
             cell = sheet.cell(row=row_index, column=column_index)
             cell.border = THIN_BORDER
-            # Skip header rows (row=1..2) to avoid overriding wrap/alignment styling.
-            if row_index > 2 and column_index >= 4:
+            # Skip header rows (row=1..3) to avoid overriding wrap/alignment styling.
+            if row_index > 3 and column_index >= 4:
                 cell.alignment = Alignment(horizontal="center", vertical="center")
 
-    # Apply header styling to the second row (weekday/weekend labels) only for date columns.
+    # Apply header styling to date columns for header rows 2 and 3.
     if all_dates:
         first_date_column = 7
         last_date_column = first_date_column + len(all_dates) - 1
         for column_index in range(first_date_column, last_date_column + 1):
             header_cell = sheet.cell(row=2, column=column_index)
+            header_cell.font = Font(bold=True)
+            header_cell.fill = HEADER_FILL
+            header_cell.alignment = Alignment(
+                horizontal="center",
+                vertical="center",
+                wrap_text=True,
+            )
+
+        for column_index in range(first_date_column, last_date_column + 1):
+            header_cell = sheet.cell(row=3, column=column_index)
             header_cell.font = Font(bold=True)
             header_cell.fill = HEADER_FILL
             header_cell.alignment = Alignment(
@@ -464,14 +496,14 @@ def _apply_layout(sheet: Worksheet, all_dates: List[date]) -> None:
 
     _apply_conditional_formatting(sheet, all_dates, last_row)
 
-    # Grey-out all cells in date columns marked as "Выходной" (row >= 3),
+    # Grey-out all cells in date columns marked as "Выходной" (row >= 4),
     # so it is visually obvious that weekend days should be ignored.
-    if all_dates and last_row >= 3:
+    if all_dates and last_row >= 4:
         first_date_column = 7
         for day_index in range(len(all_dates)):
             col_index = first_date_column + day_index
             col_letter = get_column_letter(col_index)
-            weekend_range = f"{col_letter}3:{col_letter}{last_row}"
+            weekend_range = f"{col_letter}4:{col_letter}{last_row}"
             weekend_grey_rule = FormulaRule(
                 formula=[f'{col_letter}$2="Выходной"'],
                 fill=WEEKEND_GREY_FILL,
@@ -489,6 +521,7 @@ def _apply_conditional_formatting(
     start_col = get_column_letter(first_data_column)
     end_col = get_column_letter(first_data_column + len(all_dates) - 1)
     day_type_cell = f"{start_col}$2"
+    short_day_cell = f"{start_col}$3"
 
     # Определяем начало блоков сотрудников по строкам с "Время прихода".
     employee_starts = []
@@ -531,7 +564,12 @@ def _apply_conditional_formatting(
         work_row = arrival_row + 2
         overtime_range = f"{start_col}{overtime_row}:{end_col}{overtime_row}"
         # diff = фактическая длительность - плановая длительность
-        diff_expr = f"{start_col}{work_row}-$D${arrival_row}"
+        plan_duration_expr = (
+            f'IF({short_day_cell}="Сокращенный",'
+            f'$D${arrival_row}-TIME(1,15,0),'
+            f'$D${arrival_row})'
+        )
+        diff_expr = f"{start_col}{work_row}-({plan_duration_expr})"
 
         # 0 < diff <= 30 минут  -> светло-зелёный (игнорируем почти нулевые значения)
         overtime_light_green = FormulaRule(
@@ -591,7 +629,9 @@ def _apply_conditional_formatting(
         overtime_factual_range = (
             f"{start_col}{overtime_minus_absence_row}:{end_col}{overtime_minus_absence_row}"
         )
-        diff_factual_expr = f"{start_col}{work_minus_absence_row}-$D${arrival_row}"
+        diff_factual_expr = (
+            f"{start_col}{work_minus_absence_row}-({plan_duration_expr})"
+        )
 
         overtime_factual_light_green = FormulaRule(
             formula=[
