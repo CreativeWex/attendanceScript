@@ -82,6 +82,11 @@ def _write_header(sheet: Worksheet, all_dates: List[date]) -> None:
         cell = sheet.cell(row=1, column=column_index, value=day_value)
         cell.number_format = "dd.mm.yyyy"
 
+        # Second header row under each date column: "Будний"/"Выходной".
+        # Weekend is Saturday+Sunday.
+        header_label = "Выходной" if day_value.weekday() >= 5 else "Будний"
+        sheet.cell(row=2, column=column_index, value=header_label)
+
     average_headers = (
         "Среднее время прихода",
         "Среднее время ухода",
@@ -115,7 +120,7 @@ def _write_body(
         work_mode_label = None  # resolve per employee
 
     for employee_index, employee_name in enumerate(sorted(calendar)):
-        arrival_row = 2 + employee_index * 8
+        arrival_row = 3 + employee_index * 8
         leave_row = arrival_row + 1
         work_row = arrival_row + 2
         delta_row = arrival_row + 3
@@ -337,7 +342,7 @@ def _apply_layout(sheet: Worksheet, all_dates: List[date]) -> None:
     total_columns = 5 + len(all_dates) + 9
     last_row = max(1, sheet.max_row)
 
-    sheet.freeze_panes = "G2"
+    sheet.freeze_panes = "G3"
     sheet.sheet_properties.outlinePr.summaryBelow = True
     sheet.column_dimensions["A"].width = 34
     sheet.column_dimensions["B"].width = 18
@@ -359,8 +364,23 @@ def _apply_layout(sheet: Worksheet, all_dates: List[date]) -> None:
         for column_index in range(1, total_columns + 1):
             cell = sheet.cell(row=row_index, column=column_index)
             cell.border = THIN_BORDER
-            if row_index > 1 and column_index >= 4:
+            # Skip header rows (row=1..2) to avoid overriding wrap/alignment styling.
+            if row_index > 2 and column_index >= 4:
                 cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    # Apply header styling to the second row (weekday/weekend labels) only for date columns.
+    if all_dates:
+        first_date_column = 7
+        last_date_column = first_date_column + len(all_dates) - 1
+        for column_index in range(first_date_column, last_date_column + 1):
+            header_cell = sheet.cell(row=2, column=column_index)
+            header_cell.font = Font(bold=True)
+            header_cell.fill = HEADER_FILL
+            header_cell.alignment = Alignment(
+                horizontal="center",
+                vertical="center",
+                wrap_text=True,
+            )
 
     # Толстые рамки вокруг блока строк одного сотрудника.
     # Определяем начало блока по строкам, где в колонке F стоит "Время прихода".
