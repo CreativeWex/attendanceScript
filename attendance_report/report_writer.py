@@ -171,6 +171,7 @@ def _write_body(
         for day_offset, day_value in enumerate(all_dates):
             column_index = first_data_column + day_offset
             column_letter = get_column_letter(column_index)
+            day_type_cell = f"{column_letter}$2"
 
             day_bounds = employee_days.get(day_value)
             if day_bounds is not None:
@@ -197,13 +198,13 @@ def _write_body(
                 f'=IF(OR({column_letter}{arrival_row}="",{column_letter}{leave_row}=""),"",'
                 f"{column_letter}{leave_row}-{column_letter}{arrival_row})"
             )
-            delta_formula = (
+            delta_formula_workday = (
                 f'=IF({column_letter}{arrival_row}="","",'
                 f'IF({column_letter}{arrival_row}>=$B${arrival_row},'
                 f'TEXT({column_letter}{arrival_row}-$B${arrival_row},"ч:мм"),'
                 f'TEXT($B${arrival_row}-{column_letter}{arrival_row},"-ч:мм")))'
             )
-            overtime_formula = (
+            overtime_formula_workday = (
                 f'=IF({column_letter}{work_row}="","",'
                 f'IF({column_letter}{work_row}>=$D${arrival_row},'
                 f'TEXT({column_letter}{work_row}-$D${arrival_row},"ч:мм"),'
@@ -216,13 +217,20 @@ def _write_body(
             # Переработка факт (с учетом отсутствия): переработка считается
             # от фактической длительности с учетом отсутствия, а не как
             # разность текстовой переработки и отсутствия.
-            overtime_minus_absence_formula = (
+            overtime_minus_absence_formula_workday = (
                 f'=IF({column_letter}{work_minus_absence_row}="","",'
                 f'IF({column_letter}{work_minus_absence_row}>=$D${arrival_row},'
                 f'TEXT({column_letter}{work_minus_absence_row}-$D${arrival_row},"ч:мм"),'
                 f'TEXT($D${arrival_row}-{column_letter}{work_minus_absence_row},"-ч:мм")))'
             )
 
+            delta_formula = f'=IF({day_type_cell}="Выходной","—",{delta_formula_workday[1:]})'
+            overtime_formula = (
+                f'=IF({day_type_cell}="Выходной","—",{overtime_formula_workday[1:]})'
+            )
+            overtime_minus_absence_formula = (
+                f'=IF({day_type_cell}="Выходной","—",{overtime_minus_absence_formula_workday[1:]})'
+            )
 
             work_cell = sheet.cell(
                 row=work_row, column=column_index, value=work_formula
@@ -251,47 +259,59 @@ def _write_body(
         if all_dates:
             start_column_letter = get_column_letter(first_data_column)
             end_column_letter = get_column_letter(first_data_column + len(all_dates) - 1)
+            day_type_range = f"{start_column_letter}$2:{end_column_letter}$2"
 
             avg_arrival_formula = (
-                f'=IFERROR(AVERAGE({start_column_letter}{arrival_row}:{end_column_letter}{arrival_row}),"")'
+                f'=IFERROR(AVERAGEIF({day_type_range},"Будний",'
+                f"{start_column_letter}{arrival_row}:{end_column_letter}{arrival_row}),\"\")"
             )
             avg_leave_formula = (
-                f'=IFERROR(AVERAGE({start_column_letter}{leave_row}:{end_column_letter}{leave_row}),"")'
+                f'=IFERROR(AVERAGEIF({day_type_range},"Будний",'
+                f"{start_column_letter}{leave_row}:{end_column_letter}{leave_row}),\"\")"
             )
             avg_work_formula = (
-                f'=IFERROR(AVERAGE({start_column_letter}{work_row}:{end_column_letter}{work_row}),"")'
+                f'=IFERROR(AVERAGEIF({day_type_range},"Будний",'
+                f"{start_column_letter}{work_row}:{end_column_letter}{work_row}),\"\")"
             )
             avg_delta_formula = (
-                f'=IFERROR(IF(AVERAGE({start_column_letter}{arrival_row}:{end_column_letter}{arrival_row})'
+                f'=IFERROR(IF(AVERAGEIF({day_type_range},"Будний",'
+                f"{start_column_letter}{arrival_row}:{end_column_letter}{arrival_row})"
                 f'>=$B${arrival_row},'
-                f'TEXT(AVERAGE({start_column_letter}{arrival_row}:{end_column_letter}{arrival_row})'
+                f'TEXT(AVERAGEIF({day_type_range},"Будний",'
+                f"{start_column_letter}{arrival_row}:{end_column_letter}{arrival_row})"
                 f'-$B${arrival_row},"ч:мм"),'
-                f'TEXT($B${arrival_row}-AVERAGE({start_column_letter}{arrival_row}:'
-                f'{end_column_letter}{arrival_row}),"-ч:мм")),"")'
+                f'TEXT($B${arrival_row}-AVERAGEIF({day_type_range},"Будний",'
+                f"{start_column_letter}{arrival_row}:{end_column_letter}{arrival_row}),\"-ч:мм\")),\"\")"
             )
             avg_overtime_formula = (
-                f'=IFERROR(IF(AVERAGE({start_column_letter}{work_row}:{end_column_letter}{work_row})'
+                f'=IFERROR(IF(AVERAGEIF({day_type_range},"Будний",'
+                f"{start_column_letter}{work_row}:{end_column_letter}{work_row})"
                 f'>=$D${arrival_row},'
-                f'TEXT(AVERAGE({start_column_letter}{work_row}:{end_column_letter}{work_row})'
+                f'TEXT(AVERAGEIF({day_type_range},"Будний",'
+                f"{start_column_letter}{work_row}:{end_column_letter}{work_row})"
                 f'-$D${arrival_row},"ч:мм"),'
-                f'TEXT($D${arrival_row}-AVERAGE({start_column_letter}{work_row}:'
-                f'{end_column_letter}{work_row}),"-ч:мм")),"")'
+                f'TEXT($D${arrival_row}-AVERAGEIF({day_type_range},"Будний",'
+                f"{start_column_letter}{work_row}:{end_column_letter}{work_row}),\"-ч:мм\")),\"\")"
             )
             avg_absence_formula = (
-                f'=IFERROR(AVERAGE({start_column_letter}{absence_row}:{end_column_letter}{absence_row}),"")'
+                f'=IFERROR(AVERAGEIF({day_type_range},"Будний",'
+                f"{start_column_letter}{absence_row}:{end_column_letter}{absence_row}),\"\")"
             )
             avg_work_minus_absence_formula = (
-                f'=IFERROR(AVERAGE({start_column_letter}{work_minus_absence_row}:{end_column_letter}{work_minus_absence_row}),"")'
+                f'=IFERROR(AVERAGEIF({day_type_range},"Будний",'
+                f"{start_column_letter}{work_minus_absence_row}:{end_column_letter}{work_minus_absence_row}),\"\")"
             )
             # Средняя «переработка факт (с учетом отсутствия)» считается
             # по среднему значению длительности с учетом отсутствия.
             avg_overtime_minus_absence_formula = (
-                f'=IFERROR(IF(AVERAGE({start_column_letter}{work_minus_absence_row}:{end_column_letter}{work_minus_absence_row})'
+                f'=IFERROR(IF(AVERAGEIF({day_type_range},"Будний",'
+                f"{start_column_letter}{work_minus_absence_row}:{end_column_letter}{work_minus_absence_row})"
                 f'>=$D${arrival_row},'
-                f'TEXT(AVERAGE({start_column_letter}{work_minus_absence_row}:{end_column_letter}{work_minus_absence_row})'
+                f'TEXT(AVERAGEIF({day_type_range},"Будний",'
+                f"{start_column_letter}{work_minus_absence_row}:{end_column_letter}{work_minus_absence_row})"
                 f'-$D${arrival_row},"ч:мм"),'
-                f'TEXT($D${arrival_row}-AVERAGE({start_column_letter}{work_minus_absence_row}:'
-                f'{end_column_letter}{work_minus_absence_row}),"-ч:мм")),"")'
+                f'TEXT($D${arrival_row}-AVERAGEIF({day_type_range},"Будний",'
+                f"{start_column_letter}{work_minus_absence_row}:{end_column_letter}{work_minus_absence_row}),\"-ч:мм\")),\"\")"
             )
 
             avg_arrival_cell = sheet.cell(
@@ -451,6 +471,7 @@ def _apply_conditional_formatting(
     first_data_column = 7
     start_col = get_column_letter(first_data_column)
     end_col = get_column_letter(first_data_column + len(all_dates) - 1)
+    day_type_cell = f"{start_col}$2"
 
     # Определяем начало блоков сотрудников по строкам с "Время прихода".
     employee_starts = []
@@ -469,7 +490,8 @@ def _apply_conditional_formatting(
         # зелёный: diff < -15 минут
         delta_green_rule = FormulaRule(
             formula=[
-                f'AND({start_col}{arrival_row}<>"",'
+                f'AND({day_type_cell}="Будний",'
+                f'{start_col}{arrival_row}<>"",'
                 f'{start_col}{arrival_row}-$B${arrival_row}<-1/96)'
             ],
             fill=LIGHT_GREEN_FILL,
@@ -478,7 +500,8 @@ def _apply_conditional_formatting(
         # красный: diff > 15 минут
         delta_red_rule = FormulaRule(
             formula=[
-                f'AND({start_col}{arrival_row}<>"",'
+                f'AND({day_type_cell}="Будний",'
+                f'{start_col}{arrival_row}<>"",'
                 f'{start_col}{arrival_row}-$B${arrival_row}>1/96)'
             ],
             fill=LIGHT_RED_FILL,
@@ -496,7 +519,8 @@ def _apply_conditional_formatting(
         # 0 < diff <= 30 минут  -> светло-зелёный (игнорируем почти нулевые значения)
         overtime_light_green = FormulaRule(
             formula=[
-                f'AND({start_col}{work_row}<>"",'
+                f'AND({day_type_cell}="Будний",'
+                f'{start_col}{work_row}<>"",'
                 f'{diff_expr}>0,'
                 f'{diff_expr}<=1/48,'
                 f'ABS({diff_expr})>=1/1440)'
@@ -507,7 +531,8 @@ def _apply_conditional_formatting(
         # diff > 30 минут -> тёмно-зелёный
         overtime_dark_green = FormulaRule(
             formula=[
-                f'AND({start_col}{work_row}<>"",'
+                f'AND({day_type_cell}="Будний",'
+                f'{start_col}{work_row}<>"",'
                 f'{diff_expr}>1/48,'
                 f'ABS({diff_expr})>=1/1440)'
             ],
@@ -517,7 +542,8 @@ def _apply_conditional_formatting(
         # -30 минут <= diff < 0 -> светло-красный
         overtime_light_red = FormulaRule(
             formula=[
-                f'AND({start_col}{work_row}<>"",'
+                f'AND({day_type_cell}="Будний",'
+                f'{start_col}{work_row}<>"",'
                 f'{diff_expr}<0,'
                 f'{diff_expr}>=-1/48,'
                 f'ABS({diff_expr})>=1/1440)'
@@ -528,7 +554,8 @@ def _apply_conditional_formatting(
         # diff < -30 минут -> тёмно-красный
         overtime_dark_red = FormulaRule(
             formula=[
-                f'AND({start_col}{work_row}<>"",'
+                f'AND({day_type_cell}="Будний",'
+                f'{start_col}{work_row}<>"",'
                 f'{diff_expr}<-1/48,'
                 f'ABS({diff_expr})>=1/1440)'
             ],
@@ -551,7 +578,8 @@ def _apply_conditional_formatting(
 
         overtime_factual_light_green = FormulaRule(
             formula=[
-                f'AND({start_col}{work_minus_absence_row}<>"",'
+                f'AND({day_type_cell}="Будний",'
+                f'{start_col}{work_minus_absence_row}<>"",'
                 f'{diff_factual_expr}>0,'
                 f'{diff_factual_expr}<=1/48,'
                 f'ABS({diff_factual_expr})>=1/1440)'
@@ -561,7 +589,8 @@ def _apply_conditional_formatting(
         )
         overtime_factual_dark_green = FormulaRule(
             formula=[
-                f'AND({start_col}{work_minus_absence_row}<>"",'
+                f'AND({day_type_cell}="Будний",'
+                f'{start_col}{work_minus_absence_row}<>"",'
                 f'{diff_factual_expr}>1/48,'
                 f'ABS({diff_factual_expr})>=1/1440)'
             ],
@@ -570,7 +599,8 @@ def _apply_conditional_formatting(
         )
         overtime_factual_light_red = FormulaRule(
             formula=[
-                f'AND({start_col}{work_minus_absence_row}<>"",'
+                f'AND({day_type_cell}="Будний",'
+                f'{start_col}{work_minus_absence_row}<>"",'
                 f'{diff_factual_expr}<0,'
                 f'{diff_factual_expr}>=-1/48,'
                 f'ABS({diff_factual_expr})>=1/1440)'
@@ -580,7 +610,8 @@ def _apply_conditional_formatting(
         )
         overtime_factual_dark_red = FormulaRule(
             formula=[
-                f'AND({start_col}{work_minus_absence_row}<>"",'
+                f'AND({day_type_cell}="Будний",'
+                f'{start_col}{work_minus_absence_row}<>"",'
                 f'{diff_factual_expr}<-1/48,'
                 f'ABS({diff_factual_expr})>=1/1440)'
             ],
