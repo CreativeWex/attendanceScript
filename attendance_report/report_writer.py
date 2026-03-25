@@ -17,6 +17,9 @@ LIGHT_RED_FILL = PatternFill(fill_type="solid", start_color="FFC7CE", end_color=
 DARK_RED_FILL = PatternFill(fill_type="solid", start_color="C45050", end_color="C45050")
 LIGHT_GREEN_FILL = PatternFill(fill_type="solid", start_color="C6EFCE", end_color="C6EFCE")
 DARK_GREEN_FILL = PatternFill(fill_type="solid", start_color="2D7D2F", end_color="2D7D2F")
+WEEKEND_GREY_FILL = PatternFill(
+    fill_type="solid", start_color="EDEDED", end_color="EDEDED"
+)
 BLACK_FONT = Font(color="000000")
 THIN_BORDER = Border(
     left=Side(style="thin"),
@@ -460,6 +463,20 @@ def _apply_layout(sheet: Worksheet, all_dates: List[date]) -> None:
                 )
 
     _apply_conditional_formatting(sheet, all_dates, last_row)
+
+    # Grey-out all cells in date columns marked as "Выходной" (row >= 3),
+    # so it is visually obvious that weekend days should be ignored.
+    if all_dates and last_row >= 3:
+        first_date_column = 7
+        for day_index in range(len(all_dates)):
+            col_index = first_date_column + day_index
+            col_letter = get_column_letter(col_index)
+            weekend_range = f"{col_letter}3:{col_letter}{last_row}"
+            weekend_grey_rule = FormulaRule(
+                formula=[f'{col_letter}$2="Выходной"'],
+                fill=WEEKEND_GREY_FILL,
+            )
+            sheet.conditional_formatting.add(weekend_range, weekend_grey_rule)
 
 
 def _apply_conditional_formatting(
