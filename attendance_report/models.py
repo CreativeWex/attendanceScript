@@ -34,6 +34,9 @@ class DayBounds:
     arrival_time: time
     departure_time: time
     absence_duration: timedelta
+    # If True, `departure_time` was filled with a fallback value (e.g. 18:00)
+    # because there was no matching OUT event after an IN on a weekday.
+    departure_time_fallback: bool = False
 
 
 EmployeeCalendar = Dict[str, Dict[date, DayBounds]]

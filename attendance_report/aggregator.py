@@ -40,6 +40,9 @@ class AttendanceAggregator:
                 if not events:
                     continue
 
+                is_weekday = day.weekday() < 5  # Mon..Fri
+                departure_time_fallback = False
+
                 # Sort events by time within the day
                 day_events = sorted(events, key=lambda e: e.occurred_at.time())
                 times = [e.occurred_at.time() for e in day_events]
@@ -60,7 +63,17 @@ class AttendanceAggregator:
                     ]
 
                     arrival_time = min(entry_times) if entry_times else min(times)
-                    departure_time = max(exit_times) if exit_times else max(times)
+
+                    if is_weekday and entry_times:
+                        last_exit = max(exit_times) if exit_times else None
+                        # If there is no exit after the last entry -> fallback to 18:00.
+                        if last_exit is None or max(entry_times) > last_exit:
+                            departure_time = time(18, 0)
+                            departure_time_fallback = True
+                        else:
+                            departure_time = max(exit_times)
+                    else:
+                        departure_time = max(exit_times) if exit_times else max(times)
 
                     total_absence = timedelta(0)
                     last_exit: datetime | None = None
@@ -79,6 +92,10 @@ class AttendanceAggregator:
                     day_times = sorted(times)
                     arrival_time = day_times[0]
                     departure_time = day_times[-1]
+                    # If the sequence ends with an IN on a weekday -> no matching OUT.
+                    if is_weekday and len(day_times) % 2 == 1:
+                        departure_time = time(18, 0)
+                        departure_time_fallback = True
 
                     total_absence = timedelta(0)
                     for idx in range(1, len(day_times) - 1, 2):
@@ -93,5 +110,6 @@ class AttendanceAggregator:
                     arrival_time=arrival_time,
                     departure_time=departure_time,
                     absence_duration=total_absence,
+                    departure_time_fallback=departure_time_fallback,
                 )
         return calendar

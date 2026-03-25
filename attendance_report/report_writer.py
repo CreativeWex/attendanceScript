@@ -20,6 +20,7 @@ DARK_GREEN_FILL = PatternFill(fill_type="solid", start_color="2D7D2F", end_color
 WEEKEND_GREY_FILL = PatternFill(
     fill_type="solid", start_color="EDEDED", end_color="EDEDED"
 )
+YELLOW_FILL = PatternFill(fill_type="solid", start_color="FFF2CC", end_color="FFF2CC")
 BLACK_FONT = Font(color="000000")
 THIN_BORDER = Border(
     left=Side(style="thin"),
@@ -210,6 +211,8 @@ def _write_body(
                 )
                 arrival_cell.number_format = "hh:mm"
                 leave_cell.number_format = "hh:mm"
+                if day_value.weekday() < 5 and day_bounds.departure_time_fallback:
+                    leave_cell.fill = YELLOW_FILL
                 absence_cell.number_format = "[h]:mm"
 
             work_formula = (
