@@ -75,6 +75,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         work_mode_by_fio=work_mode_by_fio,
         top_n=20,
     )
+    _print_top_arrival_delta(
+        calendar,
+        official_time=official_time,
+        work_mode_by_fio=work_mode_by_fio,
+        top_n=20,
+        descending=True,
+    )
 
     write_report(
         output_path=output_file,
@@ -179,6 +186,7 @@ def _print_top_arrival_delta(
     official_time: time,
     work_mode_by_fio: Optional[Dict[str, str]],
     top_n: int = 20,
+    descending: bool = False,
 ) -> None:
     """Print top employees with the smallest arrival delta (weekday only)."""
     if work_mode_by_fio is None:
@@ -213,11 +221,15 @@ def _print_top_arrival_delta(
         )
         return
 
-    ranked = sorted(averages.items(), key=lambda item: item[1])
-    print(
-        "\nTop-20 сотрудников с наименьшим отклонением по времени прихода "
+    ranked = sorted(averages.items(), key=lambda item: item[1], reverse=descending)
+    title = (
+        "\nTop-20 сотрудников с наибольшим отклонением по времени прихода "
+        "(Среднее отклонение прихода):"
+        if descending
+        else "\nTop-20 сотрудников с наименьшим отклонением по времени прихода "
         "(Среднее отклонение прихода):"
     )
+    print(title)
     for idx, (name, delta) in enumerate(ranked[:top_n], start=1):
         print(f"{idx:>2}. {name}: {_format_timedelta_hhmm(delta)}")
 
