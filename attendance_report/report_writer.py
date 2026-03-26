@@ -521,6 +521,7 @@ def _apply_conditional_formatting(
     if not all_dates:
         return
     first_data_column = 7
+    first_average_column = first_data_column + len(all_dates)
     start_col = get_column_letter(first_data_column)
     end_col = get_column_letter(first_data_column + len(all_dates) - 1)
     day_type_cell = f"{start_col}$2"
@@ -691,3 +692,33 @@ def _apply_conditional_formatting(
         sheet.conditional_formatting.add(
             overtime_factual_range, overtime_factual_dark_red
         )
+
+    # "Среднее время работы" (avg duration) column: highlight low averages.
+    # Apply across the whole avg column, but trigger only on "Длительность факт" rows.
+    avg_work_col = get_column_letter(first_average_column + 2)
+    avg_work_range = f"{avg_work_col}4:{avg_work_col}{last_row}"
+
+    # 08:00 < value < 09:00 -> pale red
+    avg_work_light_red = FormulaRule(
+        formula=[
+            f'AND($F4="Длительность факт",'
+            f'{avg_work_col}4<>"",'
+            f'{avg_work_col}4>TIME(8,0,0),'
+            f'{avg_work_col}4<TIME(9,0,0))'
+        ],
+        fill=LIGHT_RED_FILL,
+        font=BLACK_FONT,
+    )
+    # value < 08:00 -> bright red
+    avg_work_bright_red = FormulaRule(
+        formula=[
+            f'AND($F4="Длительность факт",'
+            f'{avg_work_col}4<>"",'
+            f'{avg_work_col}4<TIME(8,0,0))'
+        ],
+        fill=DARK_RED_FILL,
+        font=BLACK_FONT,
+    )
+
+    sheet.conditional_formatting.add(avg_work_range, avg_work_light_red)
+    sheet.conditional_formatting.add(avg_work_range, avg_work_bright_red)
