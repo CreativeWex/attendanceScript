@@ -69,6 +69,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     work_mode_by_fio = load_work_mode_mapping(input_dir)
 
     _print_top_work_duration(calendar, work_mode_by_fio=work_mode_by_fio, top_n=30)
+    _print_top_arrival_delta(
+        calendar,
+        official_time=official_time,
+        work_mode_by_fio=work_mode_by_fio,
+        top_n=20,
+    )
 
     write_report(
         output_path=output_file,
@@ -106,6 +112,12 @@ def _format_timedelta_hhmm(value: timedelta) -> str:
     hours = total_minutes // 60
     minutes = total_minutes % 60
     return f"{sign}{hours}:{minutes:02d}"
+
+def _compute_arrival_delta(day: date, arrival: time, official_time: time) -> timedelta:
+    """Compute arrival delta as фактический приход - плановый приход."""
+    arrival_dt = datetime.combine(day, arrival)
+    official_dt = datetime.combine(day, official_time)
+    return arrival_dt - official_dt
 
 
 def _print_top_work_duration(
@@ -160,6 +172,54 @@ def _print_top_work_duration(
     print("\nTop-30 сотрудников с наименьшим временем работы (Среднее время работы):")
     for idx, (name, total) in enumerate(ranked[:top_n], start=1):
         print(f"{idx:>2}. {name}: {_format_timedelta_hhmm(total)}")
+
+
+def _print_top_arrival_delta(
+    calendar,
+    official_time: time,
+    work_mode_by_fio: Optional[Dict[str, str]],
+    top_n: int = 20,
+) -> None:
+    """Print top employees with the smallest arrival delta (weekday only)."""
+    if work_mode_by_fio is None:
+        print(
+            "\nТоп-20 по отклонению прихода не построен: не найден файл режима работы "
+            "(нужно учитывать только режим 'офисный труд')."
+        )
+        return
+
+    averages: Dict[str, timedelta] = {}
+    for employee_name, days in calendar.items():
+        mode = work_mode_by_fio.get(employee_name)
+        if mode is None or mode.strip().lower() != OFFICE_WORK_MODE:
+            continue
+
+        total = timedelta(0)
+        day_count = 0
+        for day, bounds in days.items():
+            # Match report logic: averages are computed only for weekdays.
+            if day.weekday() >= 5:
+                continue
+            total += _compute_arrival_delta(day, bounds.arrival_time, official_time)
+            day_count += 1
+
+        if day_count:
+            averages[employee_name] = total / day_count
+
+    if not averages:
+        print(
+            f"\nТоп-20 по отклонению прихода не построен: не найдено сотрудников с режимом "
+            f"'{OFFICE_WORK_MODE}'."
+        )
+        return
+
+    ranked = sorted(averages.items(), key=lambda item: item[1])
+    print(
+        "\nTop-20 сотрудников с наименьшим отклонением по времени прихода "
+        "(Среднее отклонение прихода):"
+    )
+    for idx, (name, delta) in enumerate(ranked[:top_n], start=1):
+        print(f"{idx:>2}. {name}: {_format_timedelta_hhmm(delta)}")
 
 
 if __name__ == "__main__":
