@@ -124,9 +124,13 @@ def _print_top_work_duration(
         total = timedelta(0)
         day_count = 0
         for day, bounds in days.items():
-            total += _compute_day_work_duration(
+            # Match report logic: averages are computed only for weekdays.
+            if day.weekday() >= 5:
+                continue
+            duration = _compute_day_work_duration(
                 day, bounds.arrival_time, bounds.departure_time
             )
+            total += duration
             day_count += 1
         if day_count:
             averages[employee_name] = total / day_count
