@@ -627,6 +627,31 @@ def _apply_conditional_formatting(
         sheet.conditional_formatting.add(overtime_range, overtime_light_red)
         sheet.conditional_formatting.add(overtime_range, overtime_dark_red)
 
+        # Длительность факт (только будни): подсветка при низких значениях
+        work_row = arrival_row + 2
+        work_range = f"{start_col}{work_row}:{end_col}{work_row}"
+        work_light_red = FormulaRule(
+            formula=[
+                f'AND({day_type_cell}="Будний",'
+                f'{start_col}{work_row}<>"",'
+                f'{start_col}{work_row}>TIME(8,0,0),'
+                f'{start_col}{work_row}<TIME(9,0,0))'
+            ],
+            fill=LIGHT_RED_FILL,
+            font=BLACK_FONT,
+        )
+        work_dark_red = FormulaRule(
+            formula=[
+                f'AND({day_type_cell}="Будний",'
+                f'{start_col}{work_row}<>"",'
+                f'{start_col}{work_row}<TIME(8,0,0))'
+            ],
+            fill=DARK_RED_FILL,
+            font=BLACK_FONT,
+        )
+        sheet.conditional_formatting.add(work_range, work_light_red)
+        sheet.conditional_formatting.add(work_range, work_dark_red)
+
         # Переработка факт (с учетом отсутствия в течение дня)
         work_minus_absence_row = arrival_row + 6
         overtime_minus_absence_row = arrival_row + 7
