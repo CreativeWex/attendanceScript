@@ -32,6 +32,7 @@ THICK_SIDE = Side(style="thick")
 
 WORK_MODE_FILE_MISSING = "Не найден файл режима работы"
 WORK_MODE_EMPLOYEE_NOT_FOUND = "Информация по данному сотруднику не найдена"
+OFFICE_WORK_MODE = "офисный труд"
 
 
 def write_report(
@@ -133,7 +134,21 @@ def _write_body(
     else:
         work_mode_label = None  # resolve per employee
 
-    for employee_index, employee_name in enumerate(sorted(calendar)):
+    employee_names = list(calendar.keys())
+    if work_mode_by_fio is not None:
+        employee_names.sort(
+            key=lambda fio: (
+                0
+                if (work_mode_by_fio.get(fio, "") or "").strip().lower()
+                == OFFICE_WORK_MODE
+                else 1,
+                fio,
+            )
+        )
+    else:
+        employee_names.sort()
+
+    for employee_index, employee_name in enumerate(employee_names):
         arrival_row = 4 + employee_index * 8
         leave_row = arrival_row + 1
         work_row = arrival_row + 2
