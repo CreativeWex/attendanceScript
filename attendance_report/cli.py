@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .aggregator import AttendanceAggregator
-from .parsers import load_work_mode_mapping, parse_directory
+from .parsers import load_work_mode_info, load_work_mode_mapping, parse_directory
 from .report_writer import write_report
 
 OFFICE_WORK_MODE = "офисный труд"
@@ -66,7 +66,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if not calendar:
         raise RuntimeError("No attendance data found in input files.")
 
-    work_mode_by_fio = load_work_mode_mapping(input_dir)
+    work_info_by_fio = load_work_mode_info(input_dir)
+    work_mode_by_fio = (
+        None if work_info_by_fio is None else {fio: info.mode for fio, info in work_info_by_fio.items()}
+    )
 
     _print_top_work_duration(calendar, work_mode_by_fio=work_mode_by_fio, top_n=30)
     _print_top_arrival_delta(
@@ -87,6 +90,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         output_path=output_file,
         calendar=calendar,
         default_official_time=official_time,
+        work_info_by_fio=work_info_by_fio,
         work_mode_by_fio=work_mode_by_fio,
     )
 

@@ -11,6 +11,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 from .models import DayBounds, EmployeeCalendar
+from .parsers import WorkModeInfo
 
 HEADER_FILL = PatternFill(fill_type="solid", start_color="D9E1F2", end_color="D9E1F2")
 LIGHT_RED_FILL = PatternFill(fill_type="solid", start_color="FFC7CE", end_color="FFC7CE")
@@ -40,6 +41,7 @@ def write_report(
     calendar: EmployeeCalendar,
     default_official_time: time = time(9, 0),
     work_mode_by_fio: Optional[Dict[str, str]] = None,
+    work_info_by_fio: Optional[Dict[str, WorkModeInfo]] = None,
 ) -> None:
     default_leave_time: time = time(18, 0)
 
@@ -57,6 +59,7 @@ def write_report(
         default_official_time,
         default_leave_time,
         work_mode_by_fio,
+        work_info_by_fio,
     )
     _apply_layout(sheet, all_dates)
 
@@ -124,6 +127,7 @@ def _write_body(
     default_official_time: time,
     default_leave_time: time,
     work_mode_by_fio: Optional[Dict[str, str]] = None,
+    work_info_by_fio: Optional[Dict[str, WorkModeInfo]] = None,
 ) -> None:
     """Write employee rows with values and formulas."""
     first_data_column = 7
@@ -160,24 +164,33 @@ def _write_body(
 
         sheet.cell(row=arrival_row, column=1, value=employee_name)
 
+        info = work_info_by_fio.get(employee_name) if work_info_by_fio else None
         if work_mode_label is not None:
             sheet.cell(row=arrival_row, column=5, value=work_mode_label)
         else:
-            mode = work_mode_by_fio.get(
-                employee_name, WORK_MODE_EMPLOYEE_NOT_FOUND
-            )
+            if info is not None:
+                mode = info.mode
+            else:
+                mode = (
+                    work_mode_by_fio.get(employee_name, WORK_MODE_EMPLOYEE_NOT_FOUND)
+                    if work_mode_by_fio is not None
+                    else WORK_MODE_EMPLOYEE_NOT_FOUND
+                )
             sheet.cell(row=arrival_row, column=5, value=mode)
 
-        sheet.cell(row=arrival_row, column=2, value=default_official_time)
+        planned_start = info.start_time if (info and info.start_time) else default_official_time
+        planned_end = info.end_time if (info and info.end_time) else default_leave_time
+
+        sheet.cell(row=arrival_row, column=2, value=planned_start)
         sheet.cell(row=arrival_row, column=2).number_format = "hh:mm"
 
-        sheet.cell(row=arrival_row, column=4, value=time(9, 0))
-        sheet.cell(row=arrival_row, column=4).number_format = "hh:mm"
-
-        # Конец рабочего дня = начало рабочего дня + продолжительность работы
-        end_of_day_formula = f"=B{arrival_row}+D{arrival_row}"
-        sheet.cell(row=arrival_row, column=3, value=end_of_day_formula)
+        sheet.cell(row=arrival_row, column=3, value=planned_end)
         sheet.cell(row=arrival_row, column=3).number_format = "hh:mm"
+
+        # Продолжительность работы = конец - начало
+        duration_formula = f"=C{arrival_row}-B{arrival_row}"
+        sheet.cell(row=arrival_row, column=4, value=duration_formula)
+        sheet.cell(row=arrival_row, column=4).number_format = "[h]:mm"
 
         sheet.cell(row=arrival_row, column=6, value="Время прихода")
         sheet.cell(row=leave_row, column=6, value="Время ухода")

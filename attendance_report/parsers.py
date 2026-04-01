@@ -38,8 +38,12 @@ def parse_directory(input_dir: Path) -> Tuple[List[EventRecord], ParsingSummary]
         if not file_path.is_file():
             continue
 
-        # Не разбираем файлы режима работы как посещаемость
-        if file_path.name in ("Режим работы.xlsx", "Режимы работы.xlsx"):
+        # Временные lock-файлы Excel (~$...) не являются книгами
+        if file_path.name.startswith("~$"):
+            continue
+
+        # Не разбираем файлы режима работы/расписания как посещаемость
+        if file_path.name in WORK_MODE_FILENAMES:
             continue
 
         suffix = file_path.suffix.lower()
@@ -398,7 +402,117 @@ def _extract_employee_name_from_stem(stem: str) -> str:
     return fallback or cleaned
 
 
-WORK_MODE_FILENAMES = ("Режим работы.xlsx", "Режимы работы.xlsx")
+WORK_MODE_FILENAMES = ("Режим работы.xlsx", "Режимы работы.xlsx", "Расписание работы.xlsx")
+
+
+@dataclass(frozen=True)
+class WorkModeInfo:
+    mode: str
+    start_time: Optional[time]
+    end_time: Optional[time]
+
+
+def _load_work_mode_info_from_path(path: Path) -> Dict[str, WorkModeInfo]:
+    """Parse a single workbook path into ФИО -> WorkModeInfo."""
+    workbook = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    sheet = workbook.active
+    header_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), None)
+    if not header_row:
+        workbook.close()
+        return {}
+
+    fio_idx: Optional[int] = None
+    mode_idx: Optional[int] = None
+    start_idx: Optional[int] = None
+    end_idx: Optional[int] = None
+
+    for idx, header in enumerate(header_row):
+        norm = _normalize_header(header)
+        if norm in ("фио", "фиосотрудника"):
+            fio_idx = idx
+        if norm in ("режимработы", "режимыработы"):
+            mode_idx = idx
+        if norm == "началонормрабочврем":
+            start_idx = idx
+        if norm in ("конецнормрабчвр", "конецнормрабочвр"):
+            end_idx = idx
+
+    if fio_idx is None:
+        workbook.close()
+        return {}
+
+    result: Dict[str, WorkModeInfo] = {}
+    for row in sheet.iter_rows(min_row=2, values_only=True):
+        if len(row) <= fio_idx:
+            continue
+        fio_val = row[fio_idx]
+        if fio_val is None or not str(fio_val).strip():
+            continue
+        fio = str(fio_val).strip()
+
+        mode_val = row[mode_idx] if (mode_idx is not None and len(row) > mode_idx) else None
+        start_val = row[start_idx] if (start_idx is not None and len(row) > start_idx) else None
+        end_val = row[end_idx] if (end_idx is not None and len(row) > end_idx) else None
+
+        mode = str(mode_val).strip() if mode_val is not None else ""
+        start_time = _parse_time_from_value(start_val)
+        end_time = _parse_time_from_value(end_val)
+
+        result[fio] = WorkModeInfo(mode=mode, start_time=start_time, end_time=end_time)
+
+    workbook.close()
+    return result
+
+
+def _merge_work_mode_info(
+    existing: WorkModeInfo, incoming: WorkModeInfo
+) -> WorkModeInfo:
+    """Merge rows from multiple workbooks: non-empty incoming fields override."""
+    new_mode = incoming.mode.strip() if incoming.mode else existing.mode
+    return WorkModeInfo(
+        mode=new_mode,
+        start_time=incoming.start_time
+        if incoming.start_time is not None
+        else existing.start_time,
+        end_time=incoming.end_time if incoming.end_time is not None else existing.end_time,
+    )
+
+
+def load_work_mode_info(input_dir: Path) -> Optional[Dict[str, WorkModeInfo]]:
+    """Load employee work mode and normative start/end times from work mode workbooks.
+
+    Reads every file listed in `WORK_MODE_FILENAMES` that exists under `input_dir`,
+    in order, and merges rows by ФИО. Later files override missing fields from
+    earlier files (so e.g. `Расписание работы.xlsx` can add times without clearing
+    режим from `Режимы работы.xlsx`).
+
+    Expected columns (best-effort):
+    - ФИО / Ф.И.О. сотрудника
+    - режим работы (optional in schedule-only files)
+    - НачалоНормРабочВрем
+    - КонецНормРабчВр / КонецНормРабочВр
+
+    Returns None if no workbook is present; otherwise merged dict.
+    """
+    existing_in_order = [n for n in WORK_MODE_FILENAMES if (input_dir / n).is_file()]
+    if not existing_in_order:
+        return None
+
+    merged: Dict[str, WorkModeInfo] = {}
+
+    for name in WORK_MODE_FILENAMES:
+        candidate = input_dir / name
+        if not candidate.is_file():
+            continue
+        partial = _load_work_mode_info_from_path(candidate)
+
+        for fio, incoming in partial.items():
+            if fio in merged:
+                merged[fio] = _merge_work_mode_info(merged[fio], incoming)
+            else:
+                merged[fio] = incoming
+
+    return merged
 
 
 def load_work_mode_mapping(input_dir: Path) -> Optional[Dict[str, str]]:
@@ -407,40 +521,7 @@ def load_work_mode_mapping(input_dir: Path) -> Optional[Dict[str, str]]:
     File must have columns 'ФИО' and 'режим работы'. Returns None if neither file
     is present; otherwise a dict (later row wins on duplicate FIO).
     """
-    path = None
-    for name in WORK_MODE_FILENAMES:
-        candidate = input_dir / name
-        if candidate.is_file():
-            path = candidate
-            break
-    if path is None:
+    info = load_work_mode_info(input_dir)
+    if info is None:
         return None
-    workbook = openpyxl.load_workbook(path, data_only=True, read_only=True)
-    sheet = workbook.active
-    header_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), None)
-    if not header_row:
-        workbook.close()
-        return {}
-    fio_idx: Optional[int] = None
-    mode_idx: Optional[int] = None
-    for idx, header in enumerate(header_row):
-        norm = _normalize_header(header)
-        if norm == "фио":
-            fio_idx = idx
-        if norm in ("режимработы", "режимыработы"):
-            mode_idx = idx
-    if fio_idx is None or mode_idx is None:
-        workbook.close()
-        return {}
-    result: Dict[str, str] = {}
-    for row in sheet.iter_rows(min_row=2, values_only=True):
-        if len(row) <= max(fio_idx, mode_idx):
-            continue
-        fio_val = row[fio_idx]
-        mode_val = row[mode_idx]
-        if fio_val is None or not str(fio_val).strip():
-            continue
-        fio = str(fio_val).strip()
-        result[fio] = str(mode_val).strip() if mode_val is not None else ""
-    workbook.close()
-    return result
+    return {fio: row.mode for fio, row in info.items()}
