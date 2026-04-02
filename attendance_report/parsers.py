@@ -458,6 +458,13 @@ def _load_work_mode_info_from_path(path: Path) -> Dict[str, WorkModeInfo]:
         start_time = _parse_time_from_value(start_val)
         end_time = _parse_time_from_value(end_val)
 
+        # Some schedule files use 00:00:00 to indicate "unspecified".
+        # Per business rule, treat missing start as 09:00 and missing end as 18:00.
+        if start_time == time(0, 0):
+            start_time = time(9, 0)
+        if end_time == time(0, 0):
+            end_time = time(18, 0)
+
         result[fio] = WorkModeInfo(mode=mode, start_time=start_time, end_time=end_time)
 
     workbook.close()
