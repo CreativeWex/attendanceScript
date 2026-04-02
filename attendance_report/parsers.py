@@ -410,6 +410,9 @@ class WorkModeInfo:
     mode: str
     start_time: Optional[time]
     end_time: Optional[time]
+    # Business rule flags: were values explicitly stored as 00:00:00 in source?
+    start_was_zero: bool = False
+    end_was_zero: bool = False
 
 
 def _load_work_mode_info_from_path(path: Path) -> Dict[str, WorkModeInfo]:
@@ -459,13 +462,23 @@ def _load_work_mode_info_from_path(path: Path) -> Dict[str, WorkModeInfo]:
         end_time = _parse_time_from_value(end_val)
 
         # Some schedule files use 00:00:00 to indicate "unspecified".
-        # Per business rule, treat missing start as 09:00 and missing end as 18:00.
-        if start_time == time(0, 0):
+        # Business rule: treat missing start as 09:00 and missing end as 18:00,
+        # and remember this substitution for coloring.
+        start_was_zero = start_time == time(0, 0)
+        end_was_zero = end_time == time(0, 0)
+
+        if start_was_zero:
             start_time = time(9, 0)
-        if end_time == time(0, 0):
+        if end_was_zero:
             end_time = time(18, 0)
 
-        result[fio] = WorkModeInfo(mode=mode, start_time=start_time, end_time=end_time)
+        result[fio] = WorkModeInfo(
+            mode=mode,
+            start_time=start_time,
+            end_time=end_time,
+            start_was_zero=start_was_zero,
+            end_was_zero=end_was_zero,
+        )
 
     workbook.close()
     return result
@@ -482,6 +495,12 @@ def _merge_work_mode_info(
         if incoming.start_time is not None
         else existing.start_time,
         end_time=incoming.end_time if incoming.end_time is not None else existing.end_time,
+        start_was_zero=incoming.start_was_zero
+        if incoming.start_time is not None
+        else existing.start_was_zero,
+        end_was_zero=incoming.end_was_zero
+        if incoming.end_time is not None
+        else existing.end_was_zero,
     )
 
 

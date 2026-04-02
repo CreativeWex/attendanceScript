@@ -181,11 +181,15 @@ def _write_body(
         planned_start = info.start_time if (info and info.start_time) else default_official_time
         planned_end = info.end_time if (info and info.end_time) else default_leave_time
 
-        sheet.cell(row=arrival_row, column=2, value=planned_start)
-        sheet.cell(row=arrival_row, column=2).number_format = "hh:mm"
+        start_cell = sheet.cell(row=arrival_row, column=2, value=planned_start)
+        start_cell.number_format = "hh:mm"
+        if info is not None and info.start_was_zero:
+            start_cell.fill = YELLOW_FILL
 
-        sheet.cell(row=arrival_row, column=3, value=planned_end)
-        sheet.cell(row=arrival_row, column=3).number_format = "hh:mm"
+        end_cell = sheet.cell(row=arrival_row, column=3, value=planned_end)
+        end_cell.number_format = "hh:mm"
+        if info is not None and info.end_was_zero:
+            end_cell.fill = YELLOW_FILL
 
         # Продолжительность работы = конец - начало
         duration_formula = f"=C{arrival_row}-B{arrival_row}"
